@@ -1,0 +1,33 @@
+﻿{
+  "name": "arrivesuite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "National digital inventory layer for Botswana tourism",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "docker:up": "docker compose -f infra/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker-compose.yml down",
+    "docker:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "docker:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "docker:ps": "docker compose -f infra/docker-compose.yml ps",
+    "db:generate": "pnpm --filter @arrivesuite/db generate",
+    "db:push": "pnpm --filter @arrivesuite/db push",
+    "db:studio": "pnpm --filter @arrivesuite/db studio",
+    "db:seed": "pnpm --filter @arrivesuite/db seed",
+    "verify": "powershell -ExecutionPolicy Bypass -File scripts/verify.ps1"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}
