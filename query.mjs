@@ -1,0 +1,1 @@
+import {db} from "./packages/db/src/client.js"; import {accounts} from "./packages/db/src/schema/index.js"; const all = await db.select().from(accounts); console.log(all.length); await db.$client.end(); process.exit(0);

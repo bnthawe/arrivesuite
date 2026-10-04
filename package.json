@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "arrivesuite",
   "version": "0.1.0",
   "private": true,
@@ -21,9 +21,10 @@
     "verify": "powershell -ExecutionPolicy Bypass -File scripts/verify.ps1"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
+    "postgres": "^3.4.0",
     "turbo": "^2.0.0",
-    "typescript": "^5.4.0",
-    "@types/node": "^20.11.0"
+    "typescript": "^5.4.0"
   },
   "packageManager": "pnpm@9.0.0",
   "engines": {

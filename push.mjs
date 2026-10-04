@@ -1,0 +1,1 @@
+const {spawn} = require("child_process"); const p = spawn("node", ["node_modules/.pnpm/drizzle-kit@0.21.4/node_modules/drizzle-kit/bin.cjs", "push", "--url", process.env.DATABASE_URL, "--schema", "packages/db/src/schema/index.ts", "--dialect", "postgresql"], {stdio: "inherit", cwd: process.cwd()}); p.on("close", (c)=>process.exit(c||0));

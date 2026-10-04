@@ -1,0 +1,1 @@
+﻿import postgres from "postgres"; const sql = postgres(process.env.DATABASE_URL!); const r = await sql`SELECT table_name FROM information_schema.tables WHERE table_schema="public" ORDER BY table_name`; console.log(r.map(x=>x.table_name)); await sql.end();
