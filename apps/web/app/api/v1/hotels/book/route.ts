@@ -13,6 +13,7 @@ const bookSchema = z.object({
   payment: z.object({ method: z.literal('TRANSACTION_ID'), transactionId: z.string().min(1) }),
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
+  quoteToken: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
     ],
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `hotel-${hold.prebookId}`,
+    quoteToken: input.quoteToken ?? null,
   });
 
   if (!result.ok) {

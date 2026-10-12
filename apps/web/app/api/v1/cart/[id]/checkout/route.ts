@@ -14,6 +14,7 @@ const checkoutSchema = z.object({
   passengers: z.array(z.object({ type: z.enum(['ADT', 'CHD', 'INF']), age: z.number().int().min(0).max(120).optional() })).optional(),
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
+  quoteToken: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -105,6 +106,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     items: bookingItems,
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `cart-${id}`,
+    quoteToken: input.quoteToken ?? null,
   });
 
   if (!result.ok) {

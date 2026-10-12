@@ -7,8 +7,11 @@ import {
   bookings,
   db,
   hashPassword,
+  pricingSnapshots,
 } from '@arrivesuite/db';
+import { verifyQuoteToken, type Quote } from '@arrivesuite/pricing';
 import { enqueueReconciliation } from './queues';
+import { getRedis } from './redis';
 
 export interface BookingItemInput {
   itemType: string;
@@ -27,6 +30,9 @@ export interface CreateBookingInput {
   items: BookingItemInput[];
   traceId?: string;
   idempotencyKey?: string | null;
+  // Signed quote enforcement (ADR-0012). When present the quote's frozen
+  // totals must match; single-use via spent-set.
+  quoteToken?: string | null;
 }
 
 export interface CreatedBooking {
@@ -111,6 +117,47 @@ export async function createBooking(
   const taxCents = itemsWithTotals.reduce((s, i) => s + i.taxCents, 0);
   const totalCents = subtotalCents + taxCents;
 
+  // Quote enforcement: signature → expiry → single-use → totals match.
+  let quote: Quote | null = null;
+  if (input.quoteToken) {
+    const verified = verifyQuoteToken(input.quoteToken);
+    if (!verified.ok) {
+      return {
+        ok: false,
+        status: verified.reason === 'expired' ? 410 : 401,
+        error: verified.reason === 'expired' ? 'Quote expired — search again' : 'Invalid quote signature',
+      };
+    }
+    quote = verified.quote;
+    const quoted = quote;
+    const matches =
+      quoted.currency === input.currency.toUpperCase() &&
+      quoted.items.length === itemsWithTotals.length &&
+      quoted.subtotalCents === subtotalCents &&
+      quoted.taxCents === taxCents &&
+      quoted.totalCents === totalCents &&
+      quoted.items.every((q, idx) => {
+        const it = itemsWithTotals[idx];
+        return (
+          q.itemType === it.itemType &&
+          q.itemRef === it.itemRef &&
+          q.quantity === it.quantity &&
+          q.netCents === it.netCents &&
+          q.markupCents === it.markupCents &&
+          q.taxCents === it.taxCents &&
+          q.totalCents === it.totalCents
+        );
+      });
+    if (!matches) {
+      return { ok: false, status: 409, error: 'Quote totals do not match — search again' };
+    }
+    const ttlSeconds = Math.max(60, Math.min(86_400, Math.floor((quoted.expiresAt - Date.now()) / 1000)));
+    const claimed = await getRedis().set(`quote-spent:${quoted.jti}`, '1', 'EX', ttlSeconds, 'NX');
+    if (!claimed) {
+      return { ok: false, status: 409, error: 'Quote already used' };
+    }
+  }
+
   if (idempotencyKey) {
     const [existing] = await db
       .select()
@@ -180,6 +227,28 @@ export async function createBooking(
           })),
         )
         .returning();
+
+      // Immutable price record: never re-price a confirmed booking.
+      const [snapshot] = await db
+        .insert(pricingSnapshots)
+        .values({
+          bookingId: booking.id,
+          baseCurrency: 'BWP',
+          displayCurrency: booking.currency,
+          lineItems: itemsWithTotals,
+          subtotalCents,
+          taxCents,
+          totalCents,
+          rulesApplied: quote
+            ? { source: 'quote', jti: quote.jti, ...quote.rulesApplied }
+            : { source: 'snapshot', floatBps: 0, fxBufferBps: 0 },
+        })
+        .returning();
+      await db
+        .update(bookings)
+        .set({ pricingSnapshotId: snapshot.id })
+        .where(eq(bookings.id, booking.id));
+      booking.pricingSnapshotId = snapshot.id;
 
       await db.insert(auditEvents).values({
         actorId: input.accountId,

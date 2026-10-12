@@ -18,6 +18,7 @@ const createBookingSchema = z.object({
   currency: z.string().length(3),
   items: z.array(itemSchema).min(1).max(50),
   traceId: z.string().max(100).optional(),
+  quoteToken: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {

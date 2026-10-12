@@ -10,6 +10,7 @@ import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 const orderSchema = flightOrderRequestSchema.extend({
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
+  quoteToken: z.string().min(1).optional(),
 });
 
 export async function POST(request: Request) {
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
     ],
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `flight-${input.offerId}`,
+    quoteToken: input.quoteToken ?? null,
   });
 
   if (!result.ok) {
