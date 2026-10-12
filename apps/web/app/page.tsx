@@ -42,6 +42,9 @@ export default function HomePage() {
               <a href='http://localhost:3000/api/health' target='_blank' rel='noopener noreferrer'>
                 <Button variant='outline' className='w-full'>Health</Button>
               </a>
+              <a href='/search'>
+                <Button className='w-full'>Search stays &amp; flights</Button>
+              </a>
             </div>
           </CardContent>
         </Card>

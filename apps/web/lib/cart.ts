@@ -33,6 +33,12 @@ export async function getCart(id: string): Promise<Cart | null> {
   return JSON.parse(raw) as Cart;
 }
 
+// Seconds until the cart expires (for the live countdown tick).
+export async function getCartTtlSeconds(id: string): Promise<number | null> {
+  const ttl = await getRedis().ttl(`cart:${id}`);
+  return ttl >= 0 ? ttl : null;
+}
+
 async function saveCart(cart: Cart): Promise<void> {
   await getRedis().set(`cart:${cart.id}`, JSON.stringify(cart), 'EX', CART_TTL_SECONDS);
 }

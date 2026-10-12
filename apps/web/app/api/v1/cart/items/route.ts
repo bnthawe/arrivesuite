@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCachedOffer } from '@/lib/prebooks';
-import { addCartItem, cartTotals, snapshotFromFlightOffer, snapshotFromHotelOffer } from '@/lib/cart';
+import {
+  addCartItem,
+  cartTotals,
+  getCartTtlSeconds,
+  snapshotFromFlightOffer,
+  snapshotFromHotelOffer,
+} from '@/lib/cart';
 
 const addItemSchema = z.object({
   cartId: z.string().min(1).max(100),
@@ -35,5 +41,8 @@ export async function POST(request: Request) {
       ? snapshotFromHotelOffer(cached.offer, cached.currency)
       : snapshotFromFlightOffer(cached.offer, cached.currency);
   const cart = await addCartItem(parsed.data.cartId, snapshot);
-  return NextResponse.json({ cart, ...cartTotals(cart) }, { status: 201 });
+  return NextResponse.json(
+    { cart, ...cartTotals(cart), expiresIn: await getCartTtlSeconds(cart.id) },
+    { status: 201 },
+  );
 }
