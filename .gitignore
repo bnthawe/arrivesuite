@@ -16,6 +16,8 @@ Thumbs.db
 *.swp
 infra/**/data/
 uploads/
+# Generated voucher PDFs (served from public/cdn/tickets, not versioned).
+apps/web/public/cdn/tickets/*.pdf
 *.pem
 *.key
 secrets/
