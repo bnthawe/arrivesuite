@@ -119,7 +119,7 @@ v2.4's phase durations summed to 12 weeks but were labelled 13, and its mileston
 
 **Total: 8 weeks of build, 10 calendar weeks including Phase 0 buffer and the Phase 4 hardening window.**
 
-Scope was cut from v2.4 to reach this. The B2B Agent Portal, Corporate Clients, the Exchange API, Viator tours, the CMS domain and four of five materialized views are **post-MVP**. §17.3 lists every cut and §18.2 states what is permanently out.
+Scope was cut from v2.4 to reach this. The B2B Agent Portal, Corporate Clients, the Exchange API, Viator tours, the CMS domain, two materialized views and three FR groups (bulk rotation/export, contract diff viewer, pricing scenario tester/dry-run UI) are **post-MVP**. §17.3 lists every cut and §18.2 states what is permanently out.
 
 ## 1.8 Success Metrics
 
