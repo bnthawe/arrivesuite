@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const snapshot =
     cached.kind === 'hotel'
       ? snapshotFromHotelOffer(cached.offer, cached.currency)
-      : snapshotFromFlightOffer(cached.offer, cached.currency);
+      : snapshotFromFlightOffer(cached.offer, cached.currency, cached.route);
   const cart = await addCartItem(parsed.data.cartId, snapshot);
   return NextResponse.json(
     { cart, ...cartTotals(cart), expiresIn: await getCartTtlSeconds(cart.id) },

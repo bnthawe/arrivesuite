@@ -13,6 +13,8 @@ export interface CartItemSnapshot {
   netCents: number;
   markupCents: number;
   currency: string;
+  origin?: string;
+  destination?: string;
 }
 
 export interface Cart {
@@ -73,7 +75,11 @@ export function snapshotFromHotelOffer(offer: HotelOffer, currency: string): Car
   };
 }
 
-export function snapshotFromFlightOffer(offer: FlightOffer, currency: string): CartItemSnapshot {
+export function snapshotFromFlightOffer(
+  offer: FlightOffer,
+  currency: string,
+  route?: { origin: string; destination: string },
+): CartItemSnapshot {
   return {
     kind: 'flight',
     offerId: offer.offerId,
@@ -81,5 +87,7 @@ export function snapshotFromFlightOffer(offer: FlightOffer, currency: string): C
     netCents: offer.baseMinor ?? 0,
     markupCents: 0,
     currency,
+    origin: route?.origin,
+    destination: route?.destination,
   };
 }

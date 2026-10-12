@@ -21,3 +21,5 @@ apps/web/public/cdn/tickets/*.pdf
 *.pem
 *.key
 secrets/
+.vercel
+.env*

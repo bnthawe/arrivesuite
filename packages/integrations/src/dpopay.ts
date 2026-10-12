@@ -10,14 +10,17 @@ export interface DpoConfig {
 }
 
 export function dpoConfigFromEnv(env: NodeJS.ProcessEnv = process.env): DpoConfig {
-  const companyToken = env.DPO_PAY_COMPANY_TOKEN ?? '';
+  // Accepts both the DPO_PAY_* names (.env.example) and the shorter Vercel
+  // names (DPO_COMPANY_TOKEN / DPO_SERVICE_TYPE) used in production.
+  const companyToken = env.DPO_PAY_COMPANY_TOKEN ?? env.DPO_COMPANY_TOKEN ?? '';
   const mode = env.DPO_PAY_MODE;
+  const bypass = env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true';
   return {
     companyToken,
-    productServiceId: env.DPO_PAY_PRODUCT_SERVICE_ID ?? '',
+    productServiceId: env.DPO_PAY_PRODUCT_SERVICE_ID ?? env.DPO_SERVICE_TYPE ?? '',
     serviceServiceId: env.DPO_PAY_SERVICE_SERVICE_ID ?? '',
     baseUrl: env.DPO_PAY_BASE_URL ?? 'https://secure.3gdirectpay.com/API/v6/',
-    sandbox: mode ? mode !== 'live' : !companyToken || companyToken.includes('xxx'),
+    sandbox: bypass || (mode ? mode !== 'live' : !companyToken || companyToken.includes('xxx')),
   };
 }
 

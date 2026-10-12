@@ -9,18 +9,24 @@ interface CachedHotelOffer {
   kind: 'hotel';
   offer: HotelOffer;
   currency: string;
+  route?: { origin: string; destination: string };
 }
 
 interface CachedFlightOffer {
   kind: 'flight';
   offer: FlightOffer;
   currency: string;
+  route?: { origin: string; destination: string };
 }
 
 export type CachedOffer = CachedHotelOffer | CachedFlightOffer;
 
-export async function cacheOffer(offerId: string, cached: CachedOffer): Promise<void> {
-  await getRedis().set(`offer:${offerId}`, JSON.stringify(cached), 'EX', OFFER_TTL_SECONDS);
+export async function cacheOffer(
+  offerId: string,
+  cached: CachedOffer,
+  route?: { origin: string; destination: string },
+): Promise<void> {
+  await getRedis().set(`offer:${offerId}`, JSON.stringify({ ...cached, route }), 'EX', OFFER_TTL_SECONDS);
 }
 
 export async function getCachedOffer(offerId: string): Promise<CachedOffer | null> {

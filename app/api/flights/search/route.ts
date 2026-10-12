@@ -1,0 +1,2 @@
+﻿import { NextResponse } from 'next/server'
+export async function GET(){ const routes={'JNB-MUB':{base:6500, markup:'15%+500', retail:7975, commission:1475, flight:'Airlink 4Z402'}, 'GAB-JNB':{base:5420, markup:'12%', retail:6070, commission:650}, 'GAB-DXB':{base:8500, markup:'5%', retail:8925, commission:425}}; return NextResponse.json({flights:Object.values(routes), totalRevenue:{hybrid:73940, flat:43300}}) }

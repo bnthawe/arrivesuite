@@ -21,7 +21,11 @@ export async function POST(request: Request) {
 
   const { offers, medianLatencyMs } = await searchFlightOffers(parsed.data);
   for (const offer of offers) {
-    await cacheOffer(offer.offerId, { kind: 'flight', offer, currency: parsed.data.currency });
+    await cacheOffer(
+      offer.offerId,
+      { kind: 'flight', offer, currency: parsed.data.currency },
+      { origin: parsed.data.origin, destination: parsed.data.destination },
+    );
   }
   return NextResponse.json({ offers, medianLatencyMs });
 }
