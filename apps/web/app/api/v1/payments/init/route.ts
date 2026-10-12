@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { auditEvents, bookings, db, paymentIntents } from '@arrivesuite/db';
-import { initializePaystackTransaction } from '@arrivesuite/integrations';
+import { createDpoToken, dpoHostedPageUrl, initializePaystackTransaction } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 
 const initSchema = z.object({
   bookingRef: z.string().min(1).max(16),
   email: z.string().email().max(255),
+  method: z.enum(['paystack', 'dpo']).default('paystack'),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
   traceId: z.string().max(100).optional(),
 });
 
@@ -64,6 +67,7 @@ export async function POST(request: Request) {
     }
   }
 
+  const method = parsed.data.method;
   const reference = `ARS-PAY-${Date.now().toString(36).toUpperCase()}`;
   const [intent] = await db
     .insert(paymentIntents)
@@ -71,12 +75,59 @@ export async function POST(request: Request) {
       bookingId: booking.id,
       amountCents: dueCents,
       currency: booking.currency,
-      method: 'paystack',
+      method,
+      // Paystack webhooks echo our reference; DPO redirects echo the
+      // TransToken, so it becomes the lookup key once known.
       providerRef: reference,
       idempotencyKey,
       expiresAt: new Date(Date.now() + 60 * 60_000),
     })
     .returning();
+
+  const fail = async () => {
+    // Don't leave a requires_payment intent behind a failed provider call.
+    await db.update(paymentIntents).set({ state: 'failed' }).where(eq(paymentIntents.id, intent.id));
+    return NextResponse.json({ error: 'Payment provider unavailable' }, { status: 502 });
+  };
+
+  if (method === 'dpo') {
+    const appUrl = process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+    let token;
+    try {
+      token = await createDpoToken({
+        amountMajor: (dueCents / 100).toFixed(2),
+        currency: booking.currency,
+        companyRef: reference,
+        email: parsed.data.email,
+        firstName: parsed.data.firstName,
+        lastName: parsed.data.lastName,
+        serviceDescription: `ArriveSuite booking ${booking.ref.trim()}`,
+        redirectUrl: `${appUrl}/api/v1/payments/dpo/return`,
+      });
+    } catch {
+      return fail();
+    }
+    await db.update(paymentIntents).set({ providerRef: token.transToken }).where(eq(paymentIntents.id, intent.id));
+    await db.insert(auditEvents).values({
+      actorRealm: null,
+      action: 'payment_intent.created',
+      entityType: 'payment_intent',
+      entityId: intent.id,
+      diff: { bookingId: booking.id, method, reference, transRef: token.transRef, amountCents: dueCents },
+      traceId,
+    });
+    return NextResponse.json(
+      {
+        intentId: intent.id,
+        authorizationUrl: dpoHostedPageUrl(token.transToken),
+        reference: token.transToken,
+        transRef: token.transRef,
+        amountMinor: dueCents,
+        currency: booking.currency,
+      },
+      { status: 201 },
+    );
+  }
 
   let initialized;
   try {
@@ -88,10 +139,8 @@ export async function POST(request: Request) {
         reference,
       },
     );
-  } catch (err) {
-    // Don't leave a requires_payment intent behind a failed provider call.
-    await db.update(paymentIntents).set({ state: 'failed' }).where(eq(paymentIntents.id, intent.id));
-    return NextResponse.json({ error: 'Payment provider unavailable' }, { status: 502 });
+  } catch {
+    return fail();
   }
 
   await db.insert(auditEvents).values({
@@ -99,7 +148,7 @@ export async function POST(request: Request) {
     action: 'payment_intent.created',
     entityType: 'payment_intent',
     entityId: intent.id,
-    diff: { bookingId: booking.id, reference, amountCents: dueCents },
+    diff: { bookingId: booking.id, method, reference, amountCents: dueCents },
     traceId,
   });
 

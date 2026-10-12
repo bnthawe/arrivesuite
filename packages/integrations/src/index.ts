@@ -26,3 +26,10 @@ export {
   sendTemplateMessage,
 } from './whatsapp';
 export type { WhatsAppConfig, TemplateMessage, TemplateMessageResult } from './whatsapp';
+export {
+  dpoConfigFromEnv,
+  createDpoToken,
+  dpoHostedPageUrl,
+  verifyDpoToken,
+} from './dpopay';
+export type { DpoConfig } from './dpopay';

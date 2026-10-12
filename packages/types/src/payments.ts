@@ -29,3 +29,32 @@ export const paystackWebhookEventSchema = z.object({
   }),
 });
 export type PaystackWebhookEvent = z.infer<typeof paystackWebhookEventSchema>;
+
+// DPO Pay v6 (XML API). Amounts are major-unit decimals as strings.
+export const dpoCreateTokenRequestSchema = z.object({
+  amountMajor: z.string().regex(/^\d+(\.\d{1,2})?$/),
+  currency: currencyCodeSchema,
+  companyRef: z.string().min(1).max(100),
+  email: z.string().email().max(255),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+  serviceDescription: z.string().min(1).max(200),
+  redirectUrl: z.string().url().optional(),
+});
+export type DpoCreateTokenRequest = z.infer<typeof dpoCreateTokenRequestSchema>;
+
+export const dpoCreateTokenResponseSchema = z.object({
+  transToken: z.string().min(1),
+  transRef: z.string().min(1),
+});
+export type DpoCreateTokenResponse = z.infer<typeof dpoCreateTokenResponseSchema>;
+
+export const dpoVerifyResultSchema = z.object({
+  paid: z.boolean(),
+  resultCode: z.string().min(1),
+  resultExplanation: z.string(),
+  amountMajor: z.string().optional(),
+  currency: z.string().optional(),
+  approval: z.string().optional(),
+});
+export type DpoVerifyResult = z.infer<typeof dpoVerifyResultSchema>;
