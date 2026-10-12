@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
-import { auditEvents, bookingItems, bookings, db, paymentIntents, payments } from '@arrivesuite/db';
+import { auditEvents, bookingItems, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
 import type { ReconcileJobData } from '../queues';
 
 export interface ReconcileResult {
@@ -8,6 +8,8 @@ export interface ReconcileResult {
   mismatched: string[];
   intentsExpired: number;
   paymentMismatches: string[];
+  refundMismatches: string[];
+  refundsStuck: number;
   alerts: { severity: 'P2' | 'P1'; reference: string; reason: string }[];
   traceId: string;
 }
@@ -98,6 +100,36 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
     }
   }
 
+  // Refunds: completed refunds per booking must equal bookings.refundedCents,
+  // and no payment may refund more than captured. Stuck pending/approved
+  // refunds older than 24h raise P2 (provider call never finished).
+  const refundSums = await db
+    .select({
+      bookingId: paymentIntents.bookingId,
+      refundedCents: sql<number>`coalesce(sum(${refunds.amountCents}), 0)`,
+    })
+    .from(refunds)
+    .innerJoin(payments, eq(payments.id, refunds.paymentId))
+    .innerJoin(paymentIntents, eq(paymentIntents.id, payments.intentId))
+    .where(eq(refunds.state, 'completed'))
+    .groupBy(paymentIntents.bookingId);
+  const refundedByBooking = new Map(refundSums.map((s) => [s.bookingId, Number(s.refundedCents)]));
+  const refundMismatches: string[] = [];
+  for (const b of bookingsToCheck) {
+    if ((refundedByBooking.get(b.id) ?? 0) !== b.refundedCents) {
+      refundMismatches.push(b.ref.trim());
+    }
+  }
+
+  const stuckCutoff = new Date(now - 24 * 60 * 60_000);
+  const stuck = await db
+    .select({ id: refunds.id })
+    .from(refunds)
+    .where(and(inArray(refunds.state, ['pending', 'approved'] as const), lt(refunds.createdAt, stuckCutoff)));
+  for (const s of stuck) {
+    alerts.push({ severity: 'P2', reference: s.id, reason: 'refund stuck over 24h' });
+  }
+
   await db.insert(auditEvents).values({
     actorRealm: null,
     action: 'reconciliation.completed',
@@ -108,6 +140,8 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
       mismatched,
       intentsExpired: stale.length,
       paymentMismatches,
+      refundMismatches,
+      refundsStuck: stuck.length,
       alerts,
       scope: bookingId ?? 'sweep',
     },
@@ -115,5 +149,14 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
   });
 
   await job.updateProgress(100);
-  return { checked: targets.length, mismatched, intentsExpired: stale.length, paymentMismatches, alerts, traceId };
+  return {
+    checked: targets.length,
+    mismatched,
+    intentsExpired: stale.length,
+    paymentMismatches,
+    refundMismatches,
+    refundsStuck: stuck.length,
+    alerts,
+    traceId,
+  };
 }
