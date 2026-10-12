@@ -6,3 +6,4 @@ export * from './audit_events';
 export * from './bookings';
 export * from './booking_items';
 export * from './pricing_snapshots';
+export * from './payments';

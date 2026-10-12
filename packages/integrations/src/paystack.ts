@@ -9,7 +9,8 @@ export interface PaystackConfig {
 
 export function paystackConfigFromEnv(env: NodeJS.ProcessEnv = process.env): PaystackConfig {
   const key = env.PAYSTACK_SECRET_KEY ?? '';
-  return { secretKey: key, sandbox: !key || key.includes('xxx') };
+  const mode = env.PAYSTACK_MODE;
+  return { secretKey: key, sandbox: mode ? mode !== 'live' : !key || key.includes('xxx') };
 }
 
 // Primary provider (contract v1.0 §5). Test card 4084084084084081.
