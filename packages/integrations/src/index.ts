@@ -18,8 +18,9 @@ export {
   initializePaystackTransaction,
   verifyPaystackWebhook,
   isChargeSuccess,
+  createPaystackRefund,
 } from './paystack';
-export type { PaystackConfig } from './paystack';
+export type { PaystackConfig, PaystackRefundRequest } from './paystack';
 export {
   whatsAppConfigFromEnv,
   normalizePhone,
@@ -31,5 +32,6 @@ export {
   createDpoToken,
   dpoHostedPageUrl,
   verifyDpoToken,
+  refundDpoToken,
 } from './dpopay';
-export type { DpoConfig } from './dpopay';
+export type { DpoConfig, DpoRefundRequest } from './dpopay';

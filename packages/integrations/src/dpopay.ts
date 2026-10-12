@@ -111,6 +111,39 @@ export async function createDpoToken(
   return { transToken, transRef };
 }
 
+export interface DpoRefundRequest {
+  transToken: string;
+  amountMajor: string;
+  details: string;
+  refundRef?: string;
+}
+
+export async function refundDpoToken(
+  req: DpoRefundRequest,
+  cfg = dpoConfigFromEnv(),
+): Promise<void> {
+  if (cfg.sandbox) return;
+  const xml =
+    `<?xml version="1.0" encoding="utf-8"?><API3G>` +
+    `<Request>refundToken</Request>` +
+    `<CompanyToken>${esc(cfg.companyToken)}</CompanyToken>` +
+    `<TransactionToken>${esc(req.transToken)}</TransactionToken>` +
+    `<refundAmount>${esc(req.amountMajor)}</refundAmount>` +
+    `<refundDetails>${esc(req.details)}</refundDetails>` +
+    (req.refundRef ? `<refundRef>${esc(req.refundRef)}</refundRef>` : '') +
+    `</API3G>`;
+  const resXml = await postXml(xml, cfg);
+  const result = tag(resXml, 'Result');
+  if (result !== '000') {
+    throw new ProviderError({
+      provider: 'dpopay',
+      code: 'provider',
+      message: tag(resXml, 'ResultExplanation') ?? `Result ${result ?? 'unknown'}`,
+      retryable: false,
+    });
+  }
+}
+
 export function dpoHostedPageUrl(transToken: string): string {
   // Sandbox doc authoritative URL is payv3.php; the v6 reference shows
   // payv2.php — same host, token param identical either way.

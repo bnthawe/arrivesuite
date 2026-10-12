@@ -52,3 +52,34 @@ export function verifyPaystackWebhook(rawBody: string, signature: string | null,
 export function isChargeSuccess(event: PaystackWebhookEvent): boolean {
   return event.event === 'charge.success' && event.data.status === 'success';
 }
+
+export interface PaystackRefundRequest {
+  transaction: string;
+  amountMinor?: number;
+}
+
+// Partial or full refund against the original transaction reference.
+export async function createPaystackRefund(
+  req: PaystackRefundRequest,
+  cfg = paystackConfigFromEnv(),
+): Promise<{ status: string; refundId: string }> {
+  if (cfg.sandbox) {
+    return { status: 'success', refundId: `rf_sandbox_${Date.now().toString(36)}` };
+  }
+  const res = await providerFetch<{ status: boolean; data: { status: string; id: number } }>(
+    '/refund',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.secretKey}` },
+      body: JSON.stringify({
+        transaction: req.transaction,
+        ...(req.amountMinor != null ? { amount: req.amountMinor } : {}),
+      }),
+    },
+    { baseUrl: 'https://api.paystack.co', apiKey: cfg.secretKey, provider: 'paystack' },
+  );
+  if (!res.status) {
+    throw new ProviderError({ provider: 'paystack', code: 'provider', message: 'refund failed', retryable: true });
+  }
+  return { status: res.data.status, refundId: String(res.data.id) };
+}
