@@ -37,5 +37,8 @@ jobs:
       - name: Typecheck integrations
         run: pnpm --filter @arrivesuite/integrations typecheck
 
+      - name: Typecheck pricing
+        run: pnpm --filter @arrivesuite/pricing typecheck
+
       - name: Build web
         run: pnpm --filter @arrivesuite/web build

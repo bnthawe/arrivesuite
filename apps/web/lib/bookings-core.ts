@@ -33,6 +33,11 @@ export interface CreateBookingInput {
   // Signed quote enforcement (ADR-0012). When present the quote's frozen
   // totals must match; single-use via spent-set.
   quoteToken?: string | null;
+  // Route-markup provenance recorded on the immutable snapshot.
+  pricingMeta?: {
+    segment?: string;
+    rules?: { itemRef: string; commissionCents: number; routePctBps: number; routeFixedCents: number; channel: string; channelMode: string }[];
+  } | null;
 }
 
 export interface CreatedBooking {
@@ -239,9 +244,12 @@ export async function createBooking(
           subtotalCents,
           taxCents,
           totalCents,
-          rulesApplied: quote
-            ? { source: 'quote', jti: quote.jti, ...quote.rulesApplied }
-            : { source: 'snapshot', floatBps: 0, fxBufferBps: 0 },
+          rulesApplied: {
+            ...(quote
+              ? { source: 'quote', jti: quote.jti, ...quote.rulesApplied }
+              : { source: 'snapshot', floatBps: 0, fxBufferBps: 0 }),
+            ...(input.pricingMeta ? { pricing: input.pricingMeta } : {}),
+          },
         })
         .returning();
       await db

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { guestInfoSchema } from '@arrivesuite/types';
 import { bookRate } from '@arrivesuite/integrations';
 import { consumePrebookHold, getCachedOffer } from '@/lib/prebooks';
+import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
 import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
@@ -14,6 +15,7 @@ const bookSchema = z.object({
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
   quoteToken: z.string().min(1).optional(),
+  segment: z.enum(['b2c', 'b2b', 'agent', 'govt']).default('b2c'),
 });
 
 export async function POST(request: Request) {
@@ -57,7 +59,11 @@ export async function POST(request: Request) {
         `${input.guestInfo.firstName} ${input.guestInfo.lastName}`,
       );
 
-  // Totals come from the held offer snapshot, never the client.
+  // Totals come from the route engine over the held snapshot, never the client.
+  const [priced] = await applyRouteMarkup(
+    [{ itemType: 'hotel', itemRef: offer.hotelId, netCents: offer.net }],
+    input.segment,
+  );
   const result = await createBooking({
     accountId: input.accountId ?? account!.id,
     channel: 'web',
@@ -68,10 +74,23 @@ export async function POST(request: Request) {
         itemRef: offer.hotelId,
         itemSupplierType: 'sourced',
         quantity: 1,
-        netCents: offer.net,
-        markupCents: Math.max(0, offer.retail - offer.net),
+        netCents: priced.netCents,
+        markupCents: priced.markupCents,
       },
     ],
+    pricingMeta: {
+      segment: input.segment,
+      rules: [
+        {
+          itemRef: offer.hotelId,
+          commissionCents: priced.markupCents,
+          routePctBps: priced.applied.routeRule.pctBps,
+          routeFixedCents: priced.applied.routeRule.fixedCents,
+          channel: priced.applied.channel,
+          channelMode: priced.applied.channelMode,
+        },
+      ],
+    },
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `hotel-${hold.prebookId}`,
     quoteToken: input.quoteToken ?? null,

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { flightOrderRequestSchema } from '@arrivesuite/types';
 import { createFlightOrder } from '@arrivesuite/integrations';
 import { getCachedOffer } from '@/lib/prebooks';
+import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
 import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
@@ -11,6 +12,7 @@ const orderSchema = flightOrderRequestSchema.extend({
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
   quoteToken: z.string().min(1).optional(),
+  segment: z.enum(['b2c', 'b2b', 'agent', 'govt']).default('b2c'),
 });
 
 export async function POST(request: Request) {
@@ -53,6 +55,19 @@ export async function POST(request: Request) {
         input.guestInfo ? `${input.guestInfo.firstName} ${input.guestInfo.lastName}` : null,
       );
 
+  const [priced] = await applyRouteMarkup(
+    [
+      {
+        itemType: 'flight',
+        itemRef: input.offerId,
+        netCents: cached.offer.baseMinor ?? 0,
+        origin: cached.route?.origin,
+        destination: cached.route?.destination,
+      },
+    ],
+    input.segment,
+  );
+
   const result = await createBooking({
     accountId: input.accountId ?? account!.id,
     channel: 'web',
@@ -63,9 +78,23 @@ export async function POST(request: Request) {
         itemRef: input.offerId,
         itemSupplierType: 'sourced',
         quantity: 1,
-        netCents: cached.offer.baseMinor ?? 0,
+        netCents: priced.netCents,
+        markupCents: priced.markupCents,
       },
     ],
+    pricingMeta: {
+      segment: input.segment,
+      rules: [
+        {
+          itemRef: input.offerId,
+          commissionCents: priced.markupCents,
+          routePctBps: priced.applied.routeRule.pctBps,
+          routeFixedCents: priced.applied.routeRule.fixedCents,
+          channel: priced.applied.channel,
+          channelMode: priced.applied.channelMode,
+        },
+      ],
+    },
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `flight-${input.offerId}`,
     quoteToken: input.quoteToken ?? null,

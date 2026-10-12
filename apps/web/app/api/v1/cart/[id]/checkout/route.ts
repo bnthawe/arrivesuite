@@ -4,6 +4,7 @@ import { guestInfoSchema } from '@arrivesuite/types';
 import { bookRate, createFlightOrder, prebookRate } from '@arrivesuite/integrations';
 import { clearCart, getCart } from '@/lib/cart';
 import { getCachedOffer } from '@/lib/prebooks';
+import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
 import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
@@ -15,6 +16,7 @@ const checkoutSchema = z.object({
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
   quoteToken: z.string().min(1).optional(),
+  segment: z.enum(['b2c', 'b2b', 'agent', 'govt']).default('b2c'),
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -55,9 +57,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const providerRefs: { kind: string; providerRef: string; status: string }[] = [];
+  const pricedItems = await applyRouteMarkup(
+    cart.items.map((item) => ({
+      itemType: item.kind,
+      itemRef: item.offerId,
+      netCents: item.netCents,
+      origin: item.origin,
+      destination: item.destination,
+    })),
+    input.segment,
+  );
+
   const bookingItems = [];
 
-  for (const item of cart.items) {
+  for (let idx = 0; idx < cart.items.length; idx++) {
+    const item = cart.items[idx];
+    const priced = pricedItems[idx];
     if (item.kind === 'hotel') {
       const hold = await prebookRate({ offerId: item.offerId, usePaymentSdk: false });
       const booked = await bookRate({
@@ -71,8 +86,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         itemRef: item.offerId,
         itemSupplierType: 'sourced',
         quantity: 1,
-        netCents: item.netCents,
-        markupCents: item.markupCents,
+        netCents: priced.netCents,
+        markupCents: priced.markupCents,
       });
     } else {
       const order = await createFlightOrder({
@@ -86,8 +101,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         itemRef: item.offerId,
         itemSupplierType: 'sourced',
         quantity: 1,
-        netCents: item.netCents,
-        markupCents: item.markupCents,
+        netCents: priced.netCents,
+        markupCents: priced.markupCents,
       });
     }
   }
@@ -104,6 +119,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     channel: 'web',
     currency: cart.currency,
     items: bookingItems,
+    pricingMeta: {
+      segment: input.segment,
+      rules: pricedItems.map((p, i) => ({
+        itemRef: cart.items[i].offerId,
+        commissionCents: p.markupCents,
+        routePctBps: p.applied.routeRule.pctBps,
+        routeFixedCents: p.applied.routeRule.fixedCents,
+        channel: p.applied.channel,
+        channelMode: p.applied.channelMode,
+      })),
+    },
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `cart-${id}`,
     quoteToken: input.quoteToken ?? null,
