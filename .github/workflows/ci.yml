@@ -31,5 +31,11 @@ jobs:
       - name: Typecheck worker
         run: pnpm --filter @arrivesuite/worker typecheck
 
+      - name: Typecheck types
+        run: pnpm --filter @arrivesuite/types typecheck
+
+      - name: Typecheck integrations
+        run: pnpm --filter @arrivesuite/integrations typecheck
+
       - name: Build web
         run: pnpm --filter @arrivesuite/web build
