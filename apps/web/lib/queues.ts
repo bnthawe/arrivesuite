@@ -1,5 +1,5 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { getRedis } from './redis';
 
 export const RECONCILIATION_QUEUE = 'reconciliation';
 
@@ -12,10 +12,7 @@ let queue: Queue<ReconcileJobData> | null = null;
 
 function getQueue(): Queue<ReconcileJobData> {
   if (!queue) {
-    const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-      maxRetriesPerRequest: null,
-    });
-    queue = new Queue<ReconcileJobData>(RECONCILIATION_QUEUE, { connection });
+    queue = new Queue<ReconcileJobData>(RECONCILIATION_QUEUE, { connection: getRedis() });
   }
   return queue;
 }

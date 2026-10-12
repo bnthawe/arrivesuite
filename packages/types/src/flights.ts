@@ -17,6 +17,9 @@ export const flightOfferSchema = z.object({
   flight: z.string().min(1),
   type: z.enum(['NDC', 'GDS', 'LCC']),
   bags: z.string().optional(),
+  // Structured base fare in minor units. Sandbox-only: live OnArrival
+  // responses carry their own pricing object (mapped at cutover).
+  baseMinor: z.number().int().min(0).optional(),
 });
 export type FlightOffer = z.infer<typeof flightOfferSchema>;
 
