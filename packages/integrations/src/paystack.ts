@@ -41,7 +41,7 @@ export async function initializePaystackTransaction(
 
 // Verifies the x-paystack-signature header before any processing.
 export function verifyPaystackWebhook(rawBody: string, signature: string | null, cfg = paystackConfigFromEnv()): boolean {
-  if (!signature) return false;
+  if (!signature || !cfg.secretKey) return false;
   const digest = createHmac('sha512', cfg.secretKey).update(rawBody).digest('hex');
   const a = Buffer.from(digest);
   const b = Buffer.from(signature);
