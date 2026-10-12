@@ -4,7 +4,7 @@ import { channelEnum, bookingStatusEnum } from './enums';
 
 export const bookings = pgTable('bookings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  ref: char('ref', { length: 12 }).notNull().unique(),
+  ref: char('ref', { length: 16 }).notNull().unique(),
   accountId: uuid('account_id')
     .notNull()
     .references(() => accounts.id, { onDelete: 'restrict' }),
