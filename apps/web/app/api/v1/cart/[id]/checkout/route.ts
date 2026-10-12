@@ -5,7 +5,7 @@ import { bookRate, createFlightOrder, prebookRate } from '@arrivesuite/integrati
 import { clearCart, getCart } from '@/lib/cart';
 import { getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
-import { voucherPathFor } from '@/lib/vouchers';
+import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const checkoutSchema = z.object({
   guestInfo: guestInfoSchema,
@@ -112,12 +112,37 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   await clearCart(id);
 
+  const booking = result.created.booking;
+  let voucher = voucherPathFor(booking.ref);
+  try {
+    voucher = await generateVoucherPdf({
+      ref: booking.ref,
+      status: booking.status,
+      currency: booking.currency,
+      subtotalCents: booking.subtotalCents,
+      taxCents: booking.taxCents,
+      totalCents: booking.totalCents,
+      traceId: booking.traceId,
+      guestName: `${input.guestInfo.firstName} ${input.guestInfo.lastName}`,
+      providerRefs,
+      items: result.created.items.map((i) => ({
+        label: i.itemRef,
+        itemRef: i.itemRef,
+        quantity: i.quantity,
+        totalCents: i.totalCents,
+        status: i.status,
+      })),
+    });
+  } catch (err) {
+    console.error('[vouchers] generation failed, returning path only', err);
+  }
+
   return NextResponse.json(
     {
-      arsRef: result.created.booking.ref,
-      voucher: voucherPathFor(result.created.booking.ref),
+      arsRef: booking.ref,
+      voucher,
       providers: providerRefs,
-      booking: result.created.booking,
+      booking,
       items: result.created.items,
     },
     { status: 201 },

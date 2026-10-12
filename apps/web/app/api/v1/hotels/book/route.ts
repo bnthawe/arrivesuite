@@ -4,7 +4,7 @@ import { guestInfoSchema } from '@arrivesuite/types';
 import { bookRate } from '@arrivesuite/integrations';
 import { consumePrebookHold, getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
-import { voucherPathFor } from '@/lib/vouchers';
+import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const bookSchema = z.object({
   prebookId: z.string().min(1),
@@ -78,12 +78,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
+  const booking = result.created.booking;
+  let voucher = voucherPathFor(booking.ref);
+  try {
+    voucher = await generateVoucherPdf({
+      ref: booking.ref,
+      status: booking.status,
+      currency: booking.currency,
+      subtotalCents: booking.subtotalCents,
+      taxCents: booking.taxCents,
+      totalCents: booking.totalCents,
+      traceId: booking.traceId,
+      guestName: `${input.guestInfo.firstName} ${input.guestInfo.lastName}`,
+      providerRefs: [{ kind: 'hotel', providerRef: provider.bookingId, status: provider.status }],
+      items: result.created.items.map((i) => ({
+        label: i.itemRef,
+        itemRef: i.itemRef,
+        quantity: i.quantity,
+        totalCents: i.totalCents,
+        status: i.status,
+      })),
+    });
+  } catch (err) {
+    console.error('[vouchers] generation failed, returning path only', err);
+  }
+
   return NextResponse.json(
     {
       bookingId: provider.bookingId,
       status: provider.status,
-      arsRef: result.created.booking.ref,
-      voucher: voucherPathFor(result.created.booking.ref),
+      arsRef: booking.ref,
+      voucher,
     },
     { status: 201 },
   );

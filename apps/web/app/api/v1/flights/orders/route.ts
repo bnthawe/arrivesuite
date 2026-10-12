@@ -4,6 +4,7 @@ import { flightOrderRequestSchema } from '@arrivesuite/types';
 import { createFlightOrder } from '@arrivesuite/integrations';
 import { getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const orderSchema = flightOrderRequestSchema.extend({
   accountId: z.string().uuid().optional(),
@@ -71,13 +72,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
+  const booking = result.created.booking;
+  try {
+    await generateVoucherPdf({
+      ref: booking.ref,
+      status: booking.status,
+      currency: booking.currency,
+      subtotalCents: booking.subtotalCents,
+      taxCents: booking.taxCents,
+      totalCents: booking.totalCents,
+      traceId: booking.traceId,
+      guestName: input.guestInfo ? `${input.guestInfo.firstName} ${input.guestInfo.lastName}` : null,
+      providerRefs: [{ kind: 'flight', providerRef: order.orderId, status: 'confirmed' }],
+      items: result.created.items.map((i) => ({
+        label: i.itemRef,
+        itemRef: i.itemRef,
+        quantity: i.quantity,
+        totalCents: i.totalCents,
+        status: i.status,
+      })),
+    });
+  } catch (err) {
+    console.error('[vouchers] generation failed, returning path only', err);
+  }
+
   return NextResponse.json(
     {
       orderId: order.orderId,
       pnr: order.pnr,
       ticket: order.ticket,
       pdf: order.pdf,
-      arsRef: result.created.booking.ref,
+      arsRef: booking.ref,
+      voucher: voucherPathFor(booking.ref),
     },
     { status: 201 },
   );
