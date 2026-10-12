@@ -4,6 +4,7 @@ import { guestInfoSchema } from '@arrivesuite/types';
 import { bookRate } from '@arrivesuite/integrations';
 import { consumePrebookHold, getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const bookSchema = z.object({
@@ -79,6 +80,13 @@ export async function POST(request: Request) {
   }
 
   const booking = result.created.booking;
+  await sendBookingConfirmation({
+    phone: input.guestInfo.phone,
+    arsRef: booking.ref,
+    totalLine: `${booking.currency} ${(booking.totalCents / 100).toFixed(2)}`,
+    traceId,
+    bookingId: booking.id,
+  });
   let voucher = voucherPathFor(booking.ref);
   try {
     voucher = await generateVoucherPdf({

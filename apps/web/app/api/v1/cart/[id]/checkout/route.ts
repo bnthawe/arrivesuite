@@ -5,6 +5,7 @@ import { bookRate, createFlightOrder, prebookRate } from '@arrivesuite/integrati
 import { clearCart, getCart } from '@/lib/cart';
 import { getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const checkoutSchema = z.object({
@@ -113,6 +114,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   await clearCart(id);
 
   const booking = result.created.booking;
+  await sendBookingConfirmation({
+    phone: input.guestInfo.phone,
+    arsRef: booking.ref,
+    totalLine: `${booking.currency} ${(booking.totalCents / 100).toFixed(2)}`,
+    traceId,
+    bookingId: booking.id,
+  });
   let voucher = voucherPathFor(booking.ref);
   try {
     voucher = await generateVoucherPdf({

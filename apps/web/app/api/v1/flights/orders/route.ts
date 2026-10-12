@@ -4,6 +4,7 @@ import { flightOrderRequestSchema } from '@arrivesuite/types';
 import { createFlightOrder } from '@arrivesuite/integrations';
 import { getCachedOffer } from '@/lib/prebooks';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { sendBookingConfirmation } from '@/lib/notifications';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const orderSchema = flightOrderRequestSchema.extend({
@@ -73,6 +74,13 @@ export async function POST(request: Request) {
   }
 
   const booking = result.created.booking;
+  await sendBookingConfirmation({
+    phone: input.guestInfo?.phone ?? null,
+    arsRef: booking.ref,
+    totalLine: `${booking.currency} ${(booking.totalCents / 100).toFixed(2)}`,
+    traceId,
+    bookingId: booking.id,
+  });
   try {
     await generateVoucherPdf({
       ref: booking.ref,

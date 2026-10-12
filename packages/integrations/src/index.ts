@@ -20,3 +20,9 @@ export {
   isChargeSuccess,
 } from './paystack';
 export type { PaystackConfig } from './paystack';
+export {
+  whatsAppConfigFromEnv,
+  normalizePhone,
+  sendTemplateMessage,
+} from './whatsapp';
+export type { WhatsAppConfig, TemplateMessage, TemplateMessageResult } from './whatsapp';
