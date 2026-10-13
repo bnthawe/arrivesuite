@@ -57,6 +57,13 @@
       "when": 1791903600000,
       "tag": "0007_suppliers",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791907200000,
+      "tag": "0008_properties",
+      "breakpoints": true
     }
   ]
 }

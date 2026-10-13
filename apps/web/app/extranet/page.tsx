@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import PropertiesManager from './properties';
 
 interface Supplier {
   id: string;
@@ -99,9 +100,7 @@ export default function ExtranetPage() {
                 {supplier.status} • trust {supplier.trustScore}
               </span>
             </div>
-            <div className="mt-6 border-t border-[#f0f0f0] pt-4 text-sm text-[#666]">
-              Properties, rooms, rates and availability arrive in the next extranet slice.
-            </div>
+            <PropertiesManager />
           </div>
         )}
       </div>
