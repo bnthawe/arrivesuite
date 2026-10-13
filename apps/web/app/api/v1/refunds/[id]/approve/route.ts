@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq, sql } from 'drizzle-orm';
 import { accounts, auditEvents, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
-import { createPaystackRefund, refundDpoToken } from '@arrivesuite/integrations';
+import { createPaystackRefund, refundDpoToken, refundFlutterwaveTransaction, refundStripePayment } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 
 const approveSchema = z.object({
@@ -65,6 +65,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         details: refund.reason ?? `Refund for booking payment ${payment.id}`,
         refundRef: refund.id,
       });
+    } else if (intent.method === 'flutterwave') {
+      const txId = payment.providerPaymentId ? Number(payment.providerPaymentId) : NaN;
+      if (!Number.isFinite(txId)) throw new Error('missing Flutterwave transaction id');
+      await refundFlutterwaveTransaction(txId, (refund.amountCents / 100).toFixed(2));
+    } else if (intent.method === 'stripe') {
+      if (!payment.providerPaymentId) throw new Error('missing Stripe payment id');
+      await refundStripePayment(payment.providerPaymentId, refund.amountCents);
     } else {
       await createPaystackRefund({
         transaction: intent.providerRef ?? '',

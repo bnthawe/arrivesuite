@@ -2,13 +2,19 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { auditEvents, bookings, db, paymentIntents } from '@arrivesuite/db';
-import { createDpoToken, dpoHostedPageUrl, initializePaystackTransaction } from '@arrivesuite/integrations';
+import {
+  createDpoToken,
+  createStripeCheckoutSession,
+  dpoHostedPageUrl,
+  initializeFlutterwavePayment,
+  initializePaystackTransaction,
+} from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 
 const initSchema = z.object({
   bookingRef: z.string().min(1).max(16),
   email: z.string().email().max(255),
-  method: z.enum(['paystack', 'dpo']).default('paystack'),
+  method: z.enum(['paystack', 'dpo', 'flutterwave', 'stripe']).default('paystack'),
   firstName: z.string().max(100).optional(),
   lastName: z.string().max(100).optional(),
   traceId: z.string().max(100).optional(),
@@ -129,18 +135,46 @@ export async function POST(request: Request) {
     );
   }
 
-  let initialized;
+  const appUrl = process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+  let authorizationUrl: string;
+  let accessCode: string | undefined;
+  let providerReference = reference;
   try {
-    initialized = await initializePaystackTransaction(
-      {
-        email: parsed.data.email,
-        amountMinor: dueCents,
-        currency: booking.currency,
-        reference,
-      },
-    );
+    if (method === 'flutterwave') {
+      const fw = await initializeFlutterwavePayment(
+        { email: parsed.data.email, amountMinor: dueCents, currency: booking.currency, reference },
+        `${appUrl}/api/v1/payments/flutterwave/return?ref=${reference}`,
+      );
+      authorizationUrl = fw.authorizationUrl;
+      accessCode = fw.accessCode;
+    } else if (method === 'stripe') {
+      const st = await createStripeCheckoutSession(
+        { email: parsed.data.email, amountMinor: dueCents, currency: booking.currency, reference },
+        `${appUrl}/api/v1/payments/stripe/return?ref=${reference}`,
+        `${appUrl}/cart`,
+      );
+      authorizationUrl = st.authorizationUrl;
+      accessCode = st.accessCode;
+      providerReference = st.reference;
+    } else {
+      const initialized = await initializePaystackTransaction(
+        {
+          email: parsed.data.email,
+          amountMinor: dueCents,
+          currency: booking.currency,
+          reference,
+        },
+      );
+      authorizationUrl = initialized.authorizationUrl;
+      accessCode = initialized.accessCode;
+      providerReference = initialized.reference;
+    }
   } catch {
     return fail();
+  }
+
+  if (providerReference !== reference) {
+    await db.update(paymentIntents).set({ providerRef: providerReference }).where(eq(paymentIntents.id, intent.id));
   }
 
   await db.insert(auditEvents).values({
@@ -148,16 +182,16 @@ export async function POST(request: Request) {
     action: 'payment_intent.created',
     entityType: 'payment_intent',
     entityId: intent.id,
-    diff: { bookingId: booking.id, method, reference, amountCents: dueCents },
+    diff: { bookingId: booking.id, method, reference: providerReference, amountCents: dueCents },
     traceId,
   });
 
   return NextResponse.json(
     {
       intentId: intent.id,
-      authorizationUrl: initialized.authorizationUrl,
-      accessCode: initialized.accessCode,
-      reference: initialized.reference,
+      authorizationUrl,
+      accessCode,
+      reference: providerReference,
       amountMinor: dueCents,
       currency: booking.currency,
     },

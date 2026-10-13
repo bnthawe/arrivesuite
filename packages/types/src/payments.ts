@@ -30,6 +30,28 @@ export const paystackWebhookEventSchema = z.object({
 });
 export type PaystackWebhookEvent = z.infer<typeof paystackWebhookEventSchema>;
 
+// Flutterwave v3: amounts are MAJOR units; webhook carries tx_ref.
+export const flutterwaveWebhookEventSchema = z.object({
+  event: z.string().min(1).optional(),
+  status: z.string().min(1),
+  txRef: z.string().min(1).optional(),
+  tx_ref: z.string().min(1).optional(),
+  id: z.number().int().optional(),
+  amount: z.number().min(0),
+  currency: z.string().min(1),
+});
+export type FlutterwaveWebhookEvent = z.infer<typeof flutterwaveWebhookEventSchema>;
+
+// Stripe: checkout.session.completed → capture by client_reference_id.
+export const stripeCheckoutSessionSchema = z.object({
+  id: z.string().min(1),
+  client_reference_id: z.string().nullable().optional(),
+  amount_total: z.number().int().min(0).nullable().optional(),
+  currency: z.string().min(1).nullable().optional(),
+  payment_status: z.string().min(1),
+});
+export type StripeCheckoutSession = z.infer<typeof stripeCheckoutSessionSchema>;
+
 // DPO Pay v6 (XML API). Amounts are major-unit decimals as strings.
 export const dpoCreateTokenRequestSchema = z.object({
   amountMajor: z.string().regex(/^\d+(\.\d{1,2})?$/),

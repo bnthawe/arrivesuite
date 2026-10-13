@@ -35,3 +35,19 @@ export {
   refundDpoToken,
 } from './dpopay';
 export type { DpoConfig, DpoRefundRequest } from './dpopay';
+export {
+  flutterwaveConfigFromEnv,
+  initializeFlutterwavePayment,
+  verifyFlutterwaveTransaction,
+  verifyFlutterwaveWebhook,
+  refundFlutterwaveTransaction,
+} from './flutterwave';
+export type { FlutterwaveConfig, FlutterwaveVerification } from './flutterwave';
+export {
+  stripeConfigFromEnv,
+  createStripeCheckoutSession,
+  verifyStripeWebhook,
+  isStripeCheckoutComplete,
+  refundStripePayment,
+} from './stripe';
+export type { StripeConfig } from './stripe';
