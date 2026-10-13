@@ -20,6 +20,14 @@ interface Tier {
   active: boolean;
 }
 
+interface Agency {
+  id: string;
+  name: string;
+  creditLimitCents: number;
+  paymentTerms: string | null;
+  status: string;
+}
+
 const input = 'border border-[#e3e3e3] rounded-lg px-3 py-2 text-sm';
 const btn = 'bg-[#003580] hover:bg-[#005799] text-white font-semibold rounded-lg px-4 py-2 text-sm';
 const danger = 'border border-[#ffb4b4] text-[#b91c1c] rounded-lg px-3 py-1.5 text-xs';
@@ -28,6 +36,7 @@ export default function AdminPage() {
   const [ready, setReady] = useState(false);
   const [rules, setRules] = useState<Rule[]>([]);
   const [tiers, setTiers] = useState<Tier[]>([]);
+  const [agencies, setAgencies] = useState<Agency[]>([]);
   const [notice, setNotice] = useState('');
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -36,17 +45,24 @@ export default function AdminPage() {
   const [note, setNote] = useState('');
   const router = useRouter();
 
+  const [agencyName, setAgencyName] = useState('');
+  const [agencyLimit, setAgencyLimit] = useState('500000');
+  const [memberAgencyId, setMemberAgencyId] = useState('');
+  const [memberAccountId, setMemberAccountId] = useState('');
+
   const load = useCallback(async () => {
-    const [r, t] = await Promise.all([
+    const [r, t, a] = await Promise.all([
       fetch('/api/v1/admin/route-rules'),
       fetch('/api/v1/admin/channel-tiers'),
+      fetch('/api/v1/admin/agencies'),
     ]);
-    if (r.status === 401 || t.status === 401) {
+    if (r.status === 401 || t.status === 401 || a.status === 401) {
       router.push('/admin/login');
       return;
     }
     setRules((await r.json()).rules ?? []);
     setTiers((await t.json()).tiers ?? []);
+    setAgencies((await a.json()).agencies ?? []);
     setReady(true);
   }, [router]);
 
@@ -108,6 +124,45 @@ export default function AdminPage() {
   async function logout() {
     await fetch('/api/v1/auth/logout', { method: 'POST' });
     router.push('/admin/login');
+  }
+
+  async function addAgency() {
+    setNotice('');
+    const res = await fetch('/api/v1/admin/agencies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: agencyName, creditLimitCents: Number(agencyLimit) }),
+    });
+    if (!res.ok) {
+      setNotice((await res.json()).error ?? 'Failed');
+      return;
+    }
+    setAgencyName('');
+    await load();
+  }
+
+  async function setAgencyStatus(id: string, status: string) {
+    await fetch(`/api/v1/admin/agencies/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    await load();
+  }
+
+  async function addMember() {
+    setNotice('');
+    const res = await fetch(`/api/v1/admin/agencies/${memberAgencyId}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountId: memberAccountId }),
+    });
+    if (!res.ok) {
+      setNotice((await res.json()).error ?? 'Failed');
+      return;
+    }
+    setMemberAccountId('');
+    await load();
   }
 
   if (!ready) return <main className="min-h-screen grid place-items-center text-sm">Loading…</main>;
@@ -212,6 +267,48 @@ export default function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+        <h2 className="font-semibold mb-2 mt-8">Agencies</h2>
+        <div className="bg-white border border-[#e3e3e3] rounded-[16px] overflow-hidden mb-4">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#fafafa] text-left text-xs text-[#666]">
+                <th className="px-4 py-2">Name</th>
+                <th className="px-4 py-2">Credit limit</th>
+                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {agencies.map((a) => (
+                <tr key={a.id} className="border-t border-[#eee]">
+                  <td className="px-4 py-2">{a.name}</td>
+                  <td className="px-4 py-2 font-mono">{(a.creditLimitCents / 100).toFixed(2)}</td>
+                  <td className="px-4 py-2">{a.status}</td>
+                  <td className="px-4 py-2 text-right whitespace-nowrap">
+                    {a.status !== 'active' && (
+                      <button onClick={() => setAgencyStatus(a.id, 'active')} className="text-xs text-[#0071C2] mr-3">activate</button>
+                    )}
+                    {a.status === 'active' && (
+                      <button onClick={() => setAgencyStatus(a.id, 'suspended')} className="text-xs text-[#0071C2] mr-3">suspend</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white border border-[#e3e3e3] rounded-[16px] p-4 mb-4 grid md:grid-cols-3 gap-2">
+          <input className={input} value={agencyName} onChange={(e) => setAgencyName(e.target.value)} placeholder="Agency name" />
+          <input className={input} type="number" value={agencyLimit} onChange={(e) => setAgencyLimit(e.target.value)} placeholder="Credit limit (cents)" title="Credit limit in minor units" />
+          <button className={btn} onClick={addAgency}>Add agency</button>
+        </div>
+
+        <div className="bg-white border border-[#e3e3e3] rounded-[16px] p-4 mb-4 grid md:grid-cols-3 gap-2">
+          <input className={input} value={memberAgencyId} onChange={(e) => setMemberAgencyId(e.target.value)} placeholder="Agency ID" title="Agency ID (uuid)" />
+          <input className={input} value={memberAccountId} onChange={(e) => setMemberAccountId(e.target.value)} placeholder="Agent account ID" title="Must be an agent-realm account" />
+          <button className={btn} onClick={addMember}>Add agent member</button>
         </div>
         {notice && <p className="mt-3 text-sm text-[#b91c1c]">{notice}</p>}
       </div>

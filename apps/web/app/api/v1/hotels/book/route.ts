@@ -16,6 +16,7 @@ const bookSchema = z.object({
   accountId: z.string().uuid().optional(),
   traceId: z.string().max(100).optional(),
   quoteToken: z.string().min(1).optional(),
+  agencyId: z.string().uuid().optional(),
   segment: z.enum(['b2c', 'b2b', 'agent', 'govt']).default('b2c'),
 });
 
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
     traceId,
     idempotencyKey: request.headers.get('Idempotency-Key')?.slice(0, 100) ?? `hotel-${hold.prebookId}`,
     quoteToken: input.quoteToken ?? null,
+    agencyId: input.agencyId ?? null,
   });
 
   if (!result.ok) {

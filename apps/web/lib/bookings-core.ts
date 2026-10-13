@@ -12,6 +12,8 @@ import {
 import { verifyQuoteToken, type Quote } from '@arrivesuite/pricing';
 import { enqueueReconciliation } from './queues';
 import { getRedis } from './redis';
+import { agencyCredit, isAgencyMember } from './agencies';
+import { agencies } from '@arrivesuite/db';
 
 export interface BookingItemInput {
   itemType: string;
@@ -33,6 +35,9 @@ export interface CreateBookingInput {
   // Signed quote enforcement (ADR-0012). When present the quote's frozen
   // totals must match; single-use via spent-set.
   quoteToken?: string | null;
+  // B2B billing: booking account must belong to an active agency with
+  // enough credit for the booking total.
+  agencyId?: string | null;
   // Route-markup provenance recorded on the immutable snapshot.
   pricingMeta?: {
     segment?: string;
@@ -186,6 +191,20 @@ export async function createBooking(
     return { ok: false, status: 400, error: 'Unknown account' };
   }
 
+  if (input.agencyId) {
+    const [agency] = await db.select().from(agencies).where(eq(agencies.id, input.agencyId)).limit(1);
+    if (!agency || agency.status !== 'active') {
+      return { ok: false, status: 409, error: 'Agency not active' };
+    }
+    if (!(await isAgencyMember(input.agencyId, input.accountId))) {
+      return { ok: false, status: 403, error: 'Account is not a member of this agency' };
+    }
+    const credit = await agencyCredit(input.agencyId);
+    if (!credit || credit.availableCents < totalCents) {
+      return { ok: false, status: 409, error: 'Agency credit limit exceeded' };
+    }
+  }
+
   const prefix = process.env.ARS_REF_PREFIX ?? process.env.BOOKING_REF_PREFIX ?? 'ARS';
   const traceId = input.traceId ?? crypto.randomUUID();
 
@@ -264,7 +283,13 @@ export async function createBooking(
         action: 'booking.created',
         entityType: 'booking',
         entityId: booking.id,
-        diff: { ref, totalCents, status: booking.status, itemCount: createdItems.length },
+        diff: {
+          ref,
+          totalCents,
+          status: booking.status,
+          itemCount: createdItems.length,
+          ...(input.agencyId ? { agencyId: input.agencyId } : {}),
+        },
         traceId,
       });
 

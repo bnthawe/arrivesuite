@@ -8,3 +8,4 @@ export * from './booking_items';
 export * from './pricing_snapshots';
 export * from './payments';
 export * from './markup';
+export * from './agencies';
