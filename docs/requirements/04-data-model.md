@@ -207,7 +207,7 @@ Curated by Content Ops (FR-5.24.1). The merge engine (§4.7) never guesses; it j
 | Column | Type | Notes |
 |---|---|---|
 | id | uuid PK | |
-| ref | char(16) | `ARS-YYYY-NNNNNN` → 16 chars, e.g. `ARS-2026-000123`; **was char(12) in shipped schema** (§6.17) |
+| ref | varchar(16) | `ARS-YYYY-NNNNNN` (15 chars in a 16-wide column), e.g. `ARS-2026-000123`; shipped as char(12), widened via char(16) to varchar(16) — char blank-padding caused a backfill mismatch, so varchar holds the same values unpadded (§6.17) |
 | account_id | uuid FK→accounts | the principal (guest or agent or supplier) |
 | channel | booking_channel | **new split** — see §6.17: market segment (`b2c`, `b2b`, `corporate`, `admin`) |
 | source_interface | text | `web`, `whatsapp`, `api`, `backoffice` — **new** (was folded into the old `channel` enum) |
@@ -432,7 +432,7 @@ The shipped `packages/db` schema (drizzle 0000_medical_cable.sql) conflicts with
 |---|---|---|---|
 | M1 | `accounts.email` is `NOT NULL UNIQUE` | Nullable with partial unique index `WHERE email IS NOT NULL` | WhatsApp-first guests cannot be represented at all |
 | M2 | `accounts.password_hash` is `NOT NULL` | Nullable | WhatsApp-OTP accounts cannot exist |
-| M3 | `bookings.ref` is `char(12)` | `char(16)` to hold `ARS-YYYY-NNNNNN` (FR-15.35) | Booking references must be truncated or the format abandoned |
+| M3 | `bookings.ref` is `char(12)` | 16-wide column to hold `ARS-YYYY-NNNNNN` (FR-15.35); implemented as `varchar(16)` — `char(16)` blank-padding caused a backfill bug, same values unpadded | Booking references must be truncated or the format abandoned |
 | M4 | `bookings.channel` enum = web \| whatsapp \| api \| backoffice | Split into `channel` (market segment) and `source_interface` (web \| whatsapp \| api \| backoffice) | Market-segment analytics are impossible; FR-15.59 currency segmentation and §6.6 revenue recognition break |
 | M5 | `pricing_snapshots.line_items` jsonb + `bookings.pricing_snapshot_id` without FK | `bookings.pricing_snapshot_id` becomes a real FK; `pricing_snapshots` loses its circular pointer to bookings | Pricing snapshots cannot be reconciled to bookings; auditability of quote→booking fails |
 
