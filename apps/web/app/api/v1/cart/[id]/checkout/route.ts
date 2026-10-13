@@ -7,6 +7,7 @@ import { getCachedOffer } from '@/lib/prebooks';
 import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
 import { sendBookingConfirmation } from '@/lib/notifications';
+import { qrDataUrl, qrPngBuffer, verifyUrlFor } from '@/lib/qr';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const checkoutSchema = z.object({
@@ -142,6 +143,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   await clearCart(id);
 
   const booking = result.created.booking;
+  const verifyUrl = verifyUrlFor(booking.ref);
+  const qr = await qrDataUrl(verifyUrl);
   await sendBookingConfirmation({
     phone: input.guestInfo.phone,
     arsRef: booking.ref,
@@ -160,6 +163,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       totalCents: booking.totalCents,
       traceId: booking.traceId,
       guestName: `${input.guestInfo.firstName} ${input.guestInfo.lastName}`,
+      verifyUrl,
+      qrPng: qrPngBuffer(qr),
       providerRefs,
       items: result.created.items.map((i) => ({
         label: i.itemRef,
@@ -177,6 +182,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     {
       arsRef: booking.ref,
       voucher,
+      qrDataUrl: qr,
       providers: providerRefs,
       booking,
       items: result.created.items,

@@ -16,6 +16,7 @@ interface CartItem {
 interface Confirmation {
   arsRef: string;
   voucher: string;
+  qrDataUrl?: string;
   providers: { kind: string; providerRef: string; status: string }[];
 }
 
@@ -101,7 +102,7 @@ export default function CartPage() {
       setNotice(data.error ?? 'Checkout failed');
       return;
     }
-    setDone({ arsRef: data.arsRef, voucher: data.voucher, providers: data.providers });
+    setDone({ arsRef: data.arsRef, voucher: data.voucher, qrDataUrl: data.qrDataUrl, providers: data.providers });
     setItems([]);
     setExpiresIn(null);
   }
@@ -112,6 +113,10 @@ export default function CartPage() {
         <div className="container mx-auto max-w-2xl px-4 py-16 text-center">
           <h1 className="text-2xl font-bold mb-2">Booking confirmed</h1>
           <p className="font-mono text-lg mb-4">{done.arsRef}</p>
+          {done.qrDataUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={done.qrDataUrl} alt={`Verify ${done.arsRef}`} className="mx-auto mb-4 w-[220px] h-[220px]" />
+          )}
           <a href={done.voucher} target="_blank" rel="noreferrer" className="inline-block bg-[#0071C2] text-white font-semibold rounded-lg px-5 py-2.5 text-sm">
             View voucher (PDF)
           </a>

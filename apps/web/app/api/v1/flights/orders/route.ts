@@ -6,6 +6,7 @@ import { getCachedOffer } from '@/lib/prebooks';
 import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
 import { sendBookingConfirmation } from '@/lib/notifications';
+import { qrDataUrl, qrPngBuffer, verifyUrlFor } from '@/lib/qr';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
 
 const orderSchema = flightOrderRequestSchema.extend({
@@ -105,6 +106,8 @@ export async function POST(request: Request) {
   }
 
   const booking = result.created.booking;
+  const verifyUrl = verifyUrlFor(booking.ref);
+  const qr = await qrDataUrl(verifyUrl);
   await sendBookingConfirmation({
     phone: input.guestInfo?.phone ?? null,
     arsRef: booking.ref,
@@ -122,6 +125,8 @@ export async function POST(request: Request) {
       totalCents: booking.totalCents,
       traceId: booking.traceId,
       guestName: input.guestInfo ? `${input.guestInfo.firstName} ${input.guestInfo.lastName}` : null,
+      verifyUrl,
+      qrPng: qrPngBuffer(qr),
       providerRefs: [{ kind: 'flight', providerRef: order.orderId, status: 'confirmed' }],
       items: result.created.items.map((i) => ({
         label: i.itemRef,
@@ -143,6 +148,7 @@ export async function POST(request: Request) {
       pdf: order.pdf,
       arsRef: booking.ref,
       voucher: voucherPathFor(booking.ref),
+      qrDataUrl: qr,
     },
     { status: 201 },
   );

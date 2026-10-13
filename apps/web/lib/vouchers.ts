@@ -37,6 +37,8 @@ export interface VoucherData {
   guestName: string | null;
   providerRefs: { kind: string; providerRef: string; status: string }[];
   items: VoucherItem[];
+  verifyUrl: string;
+  qrPng?: Buffer;
 }
 
 function fmtCents(cents: number, currency: string): string {
@@ -83,6 +85,11 @@ export async function generateVoucherPdf(data: VoucherData): Promise<string> {
 
     doc.fontSize(9).fillColor('#666');
     if (data.traceId) doc.text(`trace: ${data.traceId}`);
+    doc.text(`Verify: ${data.verifyUrl}`);
+    if (data.qrPng) {
+      doc.moveDown(0.5);
+      doc.image(data.qrPng, { width: 140 });
+    }
     doc.text(`Issued ${new Date().toISOString()}`);
 
     doc.end();
