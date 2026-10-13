@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { accounts, auditEvents, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
 import { createPaystackRefund, refundDpoToken, refundFlutterwaveTransaction, refundStripePayment } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
+import { bookingRevenueLines, invertLines, postLedgerLines } from '@/lib/ledger';
 
 const approveSchema = z.object({
   approvedBy: z.string().uuid(),
@@ -97,6 +98,39 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .update(bookings)
     .set({ refundedCents: sql`${bookings.refundedCents} + ${refund.amountCents}` })
     .where(eq(bookings.id, intent.bookingId));
+
+  // Mirror posting pro-rata: reverse the revenue split, credit cash back.
+  // Best-effort like capture; repair endpoint backfills on failure.
+  try {
+    const revenueLines = await bookingRevenueLines(intent.bookingId);
+    const ratio = refund.amountCents / Math.max(1, intent.amountCents);
+    const mirrored = invertLines(revenueLines, 'refund', refund.id).map((l) => ({
+      ...l,
+      amountCents: Math.round(l.amountCents * ratio),
+    }));
+    const mirroredTotal = mirrored.filter((l) => l.direction === 'debit').reduce((s, l) => s + l.amountCents, 0);
+    await postLedgerLines([
+      ...mirrored,
+      {
+        account: `cash:${intent.method}`,
+        direction: 'credit' as const,
+        amountCents: mirroredTotal,
+        currency: payment.currency,
+        referenceType: 'refund',
+        referenceId: refund.id,
+      },
+    ]);
+  } catch (err) {
+    await db.insert(auditEvents).values({
+      actorId: approver.id,
+      actorRealm: 'admin',
+      action: 'refund.ledger_missing',
+      entityType: 'refund',
+      entityId: refund.id,
+      diff: { error: (err as Error)?.message ?? 'posting failed' },
+      traceId,
+    });
+  }
   await db.insert(auditEvents).values({
     actorId: approver.id,
     actorRealm: 'admin',

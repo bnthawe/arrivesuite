@@ -1,6 +1,6 @@
 import type { Job } from 'bullmq';
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
-import { auditEvents, bookingItems, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { auditEvents, bookingItems, bookings, db, ledgerEntries, paymentIntents, payments, refunds } from '@arrivesuite/db';
 import type { ReconcileJobData } from '../queues';
 
 export interface ReconcileResult {
@@ -10,6 +10,7 @@ export interface ReconcileResult {
   paymentMismatches: string[];
   refundMismatches: string[];
   refundsStuck: number;
+  ledgerMissing: string[];
   alerts: { severity: 'P2' | 'P1'; reference: string; reason: string }[];
   traceId: string;
 }
@@ -130,6 +131,42 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
     alerts.push({ severity: 'P2', reference: s.id, reason: 'refund stuck over 24h' });
   }
 
+  // Ledger completeness: captured payments and completed refunds must each
+  // have entries; gaps mean best-effort posting failed (repair endpoint).
+  const ledgerMissing: string[] = [];
+  const unpostedPayments = await db
+    .select({ id: payments.id })
+    .from(payments)
+    .leftJoin(
+      ledgerEntries,
+      and(
+        sql`${ledgerEntries.referenceId} = ${payments.id}::text`,
+        eq(ledgerEntries.referenceType, 'payment'),
+      ),
+    )
+    .where(and(eq(payments.status, 'captured'), isNull(ledgerEntries.id)))
+    .limit(100);
+  for (const p of unpostedPayments) {
+    ledgerMissing.push(`payment:${p.id}`);
+    alerts.push({ severity: 'P2', reference: p.id, reason: 'captured payment without ledger entries' });
+  }
+  const unpostedRefunds = await db
+    .select({ id: refunds.id })
+    .from(refunds)
+    .leftJoin(
+      ledgerEntries,
+      and(
+        sql`${ledgerEntries.referenceId} = ${refunds.id}::text`,
+        eq(ledgerEntries.referenceType, 'refund'),
+      ),
+    )
+    .where(and(eq(refunds.state, 'completed'), isNull(ledgerEntries.id)))
+    .limit(100);
+  for (const r of unpostedRefunds) {
+    ledgerMissing.push(`refund:${r.id}`);
+    alerts.push({ severity: 'P2', reference: r.id, reason: 'completed refund without ledger entries' });
+  }
+
   await db.insert(auditEvents).values({
     actorRealm: null,
     action: 'reconciliation.completed',
@@ -142,6 +179,7 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
       paymentMismatches,
       refundMismatches,
       refundsStuck: stuck.length,
+      ledgerMissing,
       alerts,
       scope: bookingId ?? 'sweep',
     },
@@ -156,6 +194,7 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
     paymentMismatches,
     refundMismatches,
     refundsStuck: stuck.length,
+    ledgerMissing,
     alerts,
     traceId,
   };
