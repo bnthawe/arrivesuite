@@ -12,3 +12,4 @@ export * from './agencies';
 export * from './ledger';
 export * from './suppliers';
 export * from './properties';
+export * from './tours';

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PropertiesManager from './properties';
+import ToursManager from './tours';
 
 interface Supplier {
   id: string;
@@ -101,6 +102,7 @@ export default function ExtranetPage() {
               </span>
             </div>
             <PropertiesManager />
+            <ToursManager />
           </div>
         )}
       </div>
