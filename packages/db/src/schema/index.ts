@@ -14,3 +14,4 @@ export * from './suppliers';
 export * from './properties';
 export * from './tours';
 export * from './venues';
+export * from './alerts';
