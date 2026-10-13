@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PropertiesManager from './properties';
 import ToursManager from './tours';
+import VenuesManager from './venues';
 
 interface Supplier {
   id: string;
@@ -103,6 +104,7 @@ export default function ExtranetPage() {
             </div>
             <PropertiesManager />
             <ToursManager />
+            <VenuesManager />
           </div>
         )}
       </div>

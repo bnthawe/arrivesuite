@@ -13,3 +13,4 @@ export * from './ledger';
 export * from './suppliers';
 export * from './properties';
 export * from './tours';
+export * from './venues';
