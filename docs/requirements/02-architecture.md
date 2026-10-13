@@ -391,6 +391,10 @@ English and Setswana ship in MVP (§18.3). Requirements in §13. All user-facing
 | Critical-path JS | < 100KB gzipped |
 | 3G | Search page interactive < 3s |
 
+## 15.10 Time Handling
+
+All timestamps stored as `timestamptz`; display and cut-off logic renders in `Africa/Gaborone` (UTC+2, no DST). Availability boundaries, hold expiries, departure cut-offs and RFQ deadlines are evaluated in Gaborone time; audit rows keep UTC alongside the rendered local time where both matter.
+
 ---
 
 # §16 Development Environments

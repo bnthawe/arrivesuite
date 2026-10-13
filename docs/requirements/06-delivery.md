@@ -52,7 +52,7 @@
 
 ## 17.5 Phase 2 — Extranet + Owned Inventory + WhatsApp Supplier Ops (Weeks 4–5)
 
-**Deliverables:** supplier onboarding funnel (web + WhatsApp, §5.5.2); extranet property CRUD, room types, rate plans, availability calendar, media; First 10–20 Botswana suppliers in Maun/Kasane/Gaborone; owned inventory flows through the same pricing engine and booking envelope; trust signals in B2C (Botswana Verified vs Partner); admin Supplier Ops (onboarding queue, health, contracts); content production tools; WhatsApp supplier commands L2 (§5.4): CONFIRM/DECLINE, AVAIL/RATE with confirmation gates, PAYOUTS/RECEIVED; extranet trust score computed nightly.
+**Deliverables:** supplier onboarding funnel (web + WhatsApp, §5.5.2); extranet property CRUD, room types, rate plans, availability calendar, media; First 10–20 Botswana suppliers in Maun/Kasane/Gaborone; owned inventory flows through the same pricing engine and booking envelope; trust signals in B2C (Botswana Verified vs Partner); admin Supplier Ops (onboarding queue, health, contracts); content production tools; WhatsApp supplier commands L2 (§5.4): CONFIRM/DECLINE, AVAIL/RATE with confirmation gates, PAYOUTS/RECEIVED; extranet trust score computed nightly; MICE venue/RFQ skeleton — venues, spaces, holds/options and the three-quote RFQ inbox (§5.25, D21).
 
 **Acceptance:** a guest can book a Botswana lodge alongside a sourced hotel in one search. Owned share of GMV > 0% and the §1.8 metric is live on `mv_owned_share_of_gmv`.
 
@@ -110,7 +110,7 @@ Working product with sourced flights + owned hotels/tours; PayTabs live; WhatsAp
 
 ## 18.1 In MVP (10 weeks)
 
-Sourced flights (Duffel); PayTabs; WhatsApp Cloud API direct; owned hotel and tour inventory via the extranet; WhatsApp supplier ops and guest guided booking; content production tools; pricing engine with signed quotes; immutable snapshots; audit log; idempotency; multi-currency; English + Setswana; BTO verification (manual); VAT/WHT; trust signals; owned-share-of-GMV metric; explicit booking state machine.
+Sourced hotels (LiteAPI) and flights (OnArrival); Paystack primary with DPO Pay, Flutterwave and Stripe fallback; WhatsApp Cloud API direct; owned hotel and tour inventory via the extranet; MICE venues/RFQ skeleton; WhatsApp supplier ops and guest guided booking; content production tools; pricing engine with signed quotes and hybrid route markup; immutable snapshots; audit log; idempotency; multi-currency; English + Setswana; BTO verification (manual); VAT/WHT; trust signals; owned-share-of-GMV metric; explicit booking state machine.
 
 ## 18.2 Permanently Out
 
@@ -118,10 +118,11 @@ Sourced flights (Duffel); PayTabs; WhatsApp Cloud API direct; owned hotel and to
 - Silent price changes; generic error messages; claiming instant confirmation when ticketing is pending; non-accessible interactive components; deleting contracts (disable only); deleting audit events; revealing credentials without re-auth; rotating credentials without two-person approval.
 - Metasearch; Booking.com-on-their-terms; blockchain-native anything; crypto.
 - **The generic workflow engine** (`workflow_definitions` etc.) — replaced by §9 explicitly (§17.3, §6.4).
+- **Car rental and transfers in the extranet** — car rental is cut from the locked verticals and transfers is not one of them; neither gets supplier-side surfaces (D21).
 
 ## 18.3 Deferred, Not Out
 
-B2B portal, corporate clients, Exchange API / XML-out, Viator tours, second sourced providers (Amadeus hotels is conditional, §19.1), mobile apps (WhatsApp is the mobile app), reviews, white-label, MICE, cars beyond sourced, regional expansion (research only).
+B2B portal, corporate clients, Exchange API / XML-out, Viator tours, second sourced providers (Amadeus hotels is conditional, §19.1), mobile apps (WhatsApp is the mobile app), reviews, white-label, cars beyond sourced, regional expansion (research only).
 
 ---
 
@@ -213,6 +214,8 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 | D18 | §5.14.3 authored as the ordered calculation pipeline | v2.4 listed it as present but absent |
 | D19 | FR-15.85 closed as the Availability endpoint | Numbering gap in v2.4 |
 | D20 | §5.16.14 RBAC matrix authored | FR-16.53 referenced a matrix that was never written |
+| D21 | MICE venues/RFQ enter MVP scope (§5.25, §6.18); car rental and transfers stay out of the extranet | Corporate demand funds the moat; car rental is cut from the locked verticals and transfers was never one — reopening either breaks the rebaseline |
+| D22 | Providers pivoted per contract v1.0 (LiteAPI, OnArrival, Paystack + DPO/Flutterwave/Stripe) over v2.4's Duffel/Amadeus/PayTabs | §18.1 now records the shipped set; Amadeus-conditional language retired |
 
 ---
 
@@ -248,6 +251,7 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 | §5.3 / §5.4 WhatsApp | Authored in `05-whatsapp.md` |
 | §2.8 WhatsApp commerce | Authored in `05-whatsapp.md` |
 | §5.17–§5.24, §9.1, §9.2, §15, §19, §20, §21, §22, §13 | New sections authored |
+| §5.25, §6.18, §15.10 | Authored post-v3.0 for the supplier extranet detail (hybrid-markup review) |
 | §14 Observability | Folded into §4.10, §15.2 and §5.x per-section observability FRs |
 
 **Reading order for a new engineer:** `00-index.md` → `01-strategy.md` → `02-architecture.md` → `03-requirements.md` → `04-data-model.md` → `05-whatsapp.md` → `06-delivery.md`. Start with the section you are building; the cross-reference table in `00-index.md` tells you where the FRs for that area live.

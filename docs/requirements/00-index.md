@@ -19,7 +19,7 @@ v3.0 is not a strategy memo; strategy is §1–§3. It is not a design document;
 | `00-index.md` | This file — metadata, governance, FR index, glossary, reading order |
 | `01-strategy.md` | §1 Executive Summary, §2 Vision & Positioning (incl. §2.5 WhatsApp strategy, reconstructed §2.6 hybrid inventory), §3 Target Market & Personas |
 | `02-architecture.md` | §4 System Architecture, §15 NFRs, §16 Development Environments, ADRs |
-| `03-requirements.md` | §5 Functional requirements (§5.5–§5.24), §9 Booking Lifecycle (§9.1, §9.2) |
+| `03-requirements.md` | §5 Functional requirements (§5.5–§5.25), §9 Booking Lifecycle (§9.1, §9.2) |
 | `04-data-model.md` | §6 Data Architecture (column-level DDL, RLS, retention, MVs, migration register), §12 Integrations |
 | `05-whatsapp.md` | §2.8 WhatsApp as a Transactional Interface, §5.3 Guest Booking, §5.4 Supplier Operations |
 | `06-delivery.md` | §17 Roadmap (rebaselinelined), §18 Scope, §19 Risks, §20 Decisions Register, §21 Governance, §22 Traceability |

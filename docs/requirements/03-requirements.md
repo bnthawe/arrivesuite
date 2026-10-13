@@ -1408,6 +1408,82 @@ Mobile admin console, native desktop apps, custom dashboard layouts, advanced BI
 
 ---
 
+# §5.25 Supplier Extranet Detail
+
+> Extends §5.5 with buildable detail for the Phase 2 extranet. MICE venues/RFQ enter MVP scope here (§20); car rental and transfers stay out (§18.2).
+
+## 5.25.1 Onboarding and accounts
+
+**FR-5.25.1 — Self-registration then approval.** A supplier self-registers; nothing goes live until DMC staff approve. States: `prospect` → `pending` (docs submitted) → `active`, with `suspended`/`archived` terminal-side states.
+
+**FR-5.25.2 — Licence and contract gate.** Approval requires business registration, BTO licence documents (verified manually, §19.2), and signed contract + commission terms. Documents stored as media references, never inline blobs.
+
+**FR-5.25.3 — Multi-user roles.** One supplier account holds users with roles `owner`, `front_desk`, `finance`. All rows are per-supplier isolated (§6.12); a user sees only their supplier's data.
+
+**FR-5.25.4 — Profile completeness.** Profile holds photos, policies, cancellation terms and child terms (bands configurable per property, never hardcoded). Incomplete profiles cannot be activated.
+
+**FR-5.25.5 — Terms acceptance record.** T&C and commission-schedule acceptance is a timestamped, versioned row — not a checkbox that vanishes.
+
+## 5.25.2 Inventory models
+
+**FR-5.25.6 — Accommodation hierarchy.** Property → room types or units → rate plans. Pricing in BWP by season, occupancy and meal plan. Minimum stay, closed-to-arrival and allotments per rate plan. Self-catering prices per whole unit, not per person.
+
+**FR-5.25.7 — Tour builder.** Suppliers build products directly: day-by-day itinerary, inclusions, group size limits, pricing tiers. Departures are fixed-schedule or on-request with per-departure capacity, cut-off times, and guide/vehicle resource tracking.
+
+**FR-5.25.8 — MICE venues.** Venues and spaces with capacity by layout (theatre, boardroom, banquet). Half-day and full-day rates, catering and AV add-ons. Standalone venues (gardens, conference centres) and venues attached to properties are both supported.
+
+**FR-5.25.9 — Holds, options and RFQ inbox.** Date holds and options with expiry. Corporate requests run an RFQ inbox on the three-quote model: request → up to three supplier quotes → accept/decline with deadlines.
+
+**FR-5.25.10 — Other types later.** Activities, events and visa follow the same listing → availability → booking flows after the core three types. Visa handling flags passport-data PII handling (§15.7) before build.
+
+## 5.25.3 Availability and double-booking prevention
+
+**FR-5.25.11 — One availability ledger.** Engine allocations, walk-in, phone, manual entries and calendar syncs all write to a single ledger. No parallel truth.
+
+**FR-5.25.12 — Temporary holds with expiry.** Checkout takes a hold with a TTL; confirmation is atomic (hold → booking in one transaction). Expired holds release automatically.
+
+**FR-5.25.13 — Database-level enforcement.** Unit-level inventory uses Postgres exclusion constraints on date ranges; allotment-style inventory (tour seats) uses row-locked counters (§5.23.4 pattern). Application checks alone are insufficient.
+
+**FR-5.25.14 — Manual blocks and no overbooking.** Maintenance and owner-use blocks are first-class ledger entries. Overbooking is off by default and requires explicit per-product opt-in with an audit trail.
+
+**FR-5.25.15 — Change audit.** Every availability change records who, what, and from which channel in `audit_events`.
+
+## 5.25.4 Day-to-day operations
+
+**FR-5.25.16 — Manual reservations.** Staff create, modify and cancel walk-in and phone reservations through the same booking envelope as online sales.
+
+**FR-5.25.17 — Calendar views.** Tape chart for rooms, departure calendar for tours, venue diary for MICE — all reading the §5.25.3 ledger, never separate state.
+
+**FR-5.25.18 — Guest records and tender types.** Guest records, notes, deposits and payments received by cash, EFT or Paystack link. Cash/EFT are tender types on the payment record, not provider transactions.
+
+**FR-5.25.19 — Documents and lists.** Confirmations, invoices, receipts, and arrivals/departures lists generate from booking state. No print-button workarounds: the PDF voucher is the print path.
+
+## 5.25.5 Engine integration
+
+**FR-5.25.20 — Canonical-first adapters.** Each supplier maps into the canonical product schema. Per-supplier adapter code exists only where the canonical mapping cannot express the supplier's feed.
+
+**FR-5.25.21 — BWP, no FX, snapshotted.** Rates stay in BWP with no FX conversion. Prices and rates snapshot at booking time; refunds price from the snapshot, never current rates.
+
+**FR-5.25.22 — Push inventory, pull bookings.** The engine pushes inventory and rates and pulls bookings. Products are instant-confirm or on-request with a supplier acceptance deadline.
+
+**FR-5.25.23 — Visible sync health.** Sync status and error log per supplier, reusing §6.7 health-check and payload tables. Failed pushes are retryable from the extranet.
+
+## 5.25.6 Finance
+
+**FR-5.25.24 — Commission or net-rate configuration.** Per-supplier commission or net-rate terms with the markup layer applied deterministically; every rule that fired is recorded on the pricing snapshot.
+
+**FR-5.25.25 — Statements and reconciliation.** Supplier statements and payout reconciliation against `payout_runs`; VAT and levies shown consistently as inclusive or exclusive per rule, never mixed silently.
+
+## 5.25.7 Cross-cutting adds
+
+**FR-5.25.26 — Idempotency on every extranet write.** Manual reservations, blocks, rate changes and RFQ responses all carry idempotency keys; replays return the original.
+
+**FR-5.25.27 — Snapshots are immutable and refund-priced.** Pricing snapshots are never mutated; refunds and re-quotes read the snapshot taken at booking time.
+
+**FR-5.25.28 — Trust and change propagation.** Profile or inventory changes that affect trust recompute the trust score and emit owner-update webhooks; supplier-affecting events also notify the #supply channel.
+
+---
+
 # §9.1 Booking State Machine
 
 > **New in v3.0.** v2.4 had workflow tables and referenced "§9.1/§9.2" but never defined them. This is the explicit replacement for the generic workflow engine (ADR-0020).
