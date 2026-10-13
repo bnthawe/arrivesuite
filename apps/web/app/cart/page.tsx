@@ -10,6 +10,7 @@ interface CartItem {
   netCents: number;
   markupCents: number;
   currency: string;
+  imageUrl?: string;
 }
 
 interface Confirmation {
@@ -138,7 +139,12 @@ export default function CartPage() {
         <div className="space-y-3">
           {items.map((it, i) => (
             <div key={`${it.offerId}-${i}`} className="flex gap-3 border border-[#e3e3e3] rounded-[16px] p-3 bg-white">
-              <div className="w-[72px] h-[72px] rounded-[12px] bg-gradient-to-br from-[#003580] to-[#0071C2] shrink-0 grid place-items-center text-white/70 text-[10px]">280×240</div>
+              {it.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={it.imageUrl} alt={it.label} className="w-[72px] h-[72px] rounded-[12px] object-cover shrink-0" />
+              ) : (
+                <div className="w-[72px] h-[72px] rounded-[12px] bg-gradient-to-br from-[#003580] to-[#0071C2] shrink-0 grid place-items-center text-white/70 text-[10px]">280×240</div>
+              )}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-semibold leading-[16px]">{it.label}</div>
                 <div className="text-[11px] text-[#666]">{it.kind} • {(it.netCents + it.markupCents) / 100} {it.currency}</div>

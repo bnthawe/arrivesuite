@@ -15,6 +15,7 @@ export interface CartItemSnapshot {
   currency: string;
   origin?: string;
   destination?: string;
+  imageUrl?: string;
 }
 
 export interface Cart {

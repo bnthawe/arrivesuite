@@ -86,6 +86,7 @@ function sandboxSearch(req: HotelSearchRequest): HotelOffer[] {
       retail: 14375,
       freeCancel: '2026-12-08T14:00:00Z',
       badges: ['LiteAPI FREE', 'Botswana Verified', '85% trust', 'owned 2 units'],
+      imageUrl: '/img/lodge.svg',
     },
   ];
 }

@@ -38,8 +38,8 @@ export async function POST(request: Request) {
 
   const snapshot =
     cached.kind === 'hotel'
-      ? snapshotFromHotelOffer(cached.offer, cached.currency)
-      : snapshotFromFlightOffer(cached.offer, cached.currency, cached.route);
+      ? { ...snapshotFromHotelOffer(cached.offer, cached.currency), imageUrl: cached.offer.imageUrl }
+      : { ...snapshotFromFlightOffer(cached.offer, cached.currency, cached.route), imageUrl: cached.offer.imageUrl };
   const cart = await addCartItem(parsed.data.cartId, snapshot);
   return NextResponse.json(
     { cart, ...cartTotals(cart), expiresIn: await getCartTtlSeconds(cart.id) },

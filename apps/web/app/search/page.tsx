@@ -11,6 +11,7 @@ interface HotelOffer {
   retail: number;
   freeCancel: string | null;
   badges: string[];
+  imageUrl?: string;
 }
 
 interface FlightOffer {
@@ -19,6 +20,17 @@ interface FlightOffer {
   type: string;
   bags?: string;
   baseMinor?: number;
+  imageUrl?: string;
+}
+
+function TileImage({ src, label }: { src?: string; label: string }) {
+  if (!src) {
+    return <div className={thumb}>280×240</div>;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={label} className={`${thumb} object-cover`} />
+  );
 }
 
 function getCartId(): string {
@@ -178,7 +190,7 @@ export default function SearchPage() {
         <div className="space-y-3">
           {tab === 'hotels' && hotels.map((h) => (
             <div key={h.offerId} className={tile}>
-              <div className={thumb}>280×240</div>
+              <TileImage src={h.imageUrl} label={h.name} />
               <div className="flex-1 min-w-0">
                 <div className="text-[15px] font-semibold">{h.name}</div>
                 <div className="text-xs text-[#666] mt-1">net {h.net} → retail {h.retail} BWP</div>
@@ -197,7 +209,7 @@ export default function SearchPage() {
           ))}
           {tab === 'flights' && flights.map((f) => (
             <div key={f.offerId} className={tile}>
-              <div className={thumb}>280×240</div>
+              <TileImage src={f.imageUrl} label={f.flight} />
               <div className="flex-1 min-w-0">
                 <div className="text-[15px] font-semibold">{f.flight}</div>
                 <div className="mt-2 flex flex-wrap gap-1.5">

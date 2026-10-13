@@ -19,6 +19,7 @@ export const hotelOfferSchema = z.object({
   retail: z.number().int().min(0),
   freeCancel: z.string().datetime().nullable(),
   badges: z.array(z.string()),
+  imageUrl: z.string().min(1).optional(),
 });
 export type HotelOffer = z.infer<typeof hotelOfferSchema>;
 

@@ -27,9 +27,9 @@ export async function searchFlightOffers(
   if (cfg.sandbox) {
     return {
       offers: [
-        { offerId: 'off_qr1362', flight: 'QR1362 GAB→JNB 10:15-11:55 Direct 23kg base 5420 trust 88', type: 'NDC', baseMinor: 5420 },
-        { offerId: 'off_abc123', flight: 'Airlink 4Z402 JNB→MUB 08:00-09:30 Direct 1h30m base 6500 trust 92', type: 'GDS', baseMinor: 6500 },
-        { offerId: 'off_fn303', flight: 'FastJet FN303 via GBE 1 Stop base 4200 LCC direct', type: 'LCC', bags: 'direct', baseMinor: 4200 },
+        { offerId: 'off_qr1362', flight: 'QR1362 GAB→JNB 10:15-11:55 Direct 23kg base 5420 trust 88', type: 'NDC', baseMinor: 5420, imageUrl: '/img/wing.svg' },
+        { offerId: 'off_abc123', flight: 'Airlink 4Z402 JNB→MUB 08:00-09:30 Direct 1h30m base 6500 trust 92', type: 'GDS', baseMinor: 6500, imageUrl: '/img/wing.svg' },
+        { offerId: 'off_fn303', flight: 'FastJet FN303 via GBE 1 Stop base 4200 LCC direct', type: 'LCC', bags: 'direct', baseMinor: 4200, imageUrl: '/img/wing.svg' },
       ],
       medianLatencyMs: 290,
     };
