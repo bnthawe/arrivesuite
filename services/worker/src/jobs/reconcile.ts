@@ -18,8 +18,26 @@ export interface ReconcileResult {
 // Booking totals vs items, plus the 5-minute payments cycle (FR-5.17.6):
 // expire stale intents, match captured payments to bookings.paidCents,
 // and raise P2 (then P1 after 30 min) alerts for unmatched money.
+//
+// Overlap safety: this processor is read-only apart from appending audit
+// rows and flipping stale-intent flags (both idempotent on retry), so a
+// slow sweep running alongside the next tick or booking jobs is safe.
+// Per-run identity is job.id (the repeatable's data.traceId is static);
+// a 4-minute ceiling bounds runaway runs inside the 5-minute interval.
+const PROCESS_TIMEOUT_MS = 4 * 60_000;
+
 export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<ReconcileResult> {
+  return await Promise.race([
+    runReconciliation(job),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('reconciliation timed out')), PROCESS_TIMEOUT_MS),
+    ),
+  ]);
+}
+
+async function runReconciliation(job: Job<ReconcileJobData>): Promise<ReconcileResult> {
   const { bookingId, traceId } = job.data;
+  const runId = job.id ?? traceId;
 
   const targets = bookingId
     ? await db.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1)
@@ -171,7 +189,7 @@ export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<Rec
     actorRealm: null,
     action: 'reconciliation.completed',
     entityType: 'reconciliation',
-    entityId: traceId,
+    entityId: runId,
     diff: {
       checked: targets.length,
       mismatched,

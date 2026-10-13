@@ -42,3 +42,7 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @arrivesuite/web build
+        env:
+          # Satisfies the fail-fast DATABASE_URL check at module load.
+          # No query runs during build.
+          DATABASE_URL: postgresql://localhost:5432/ci

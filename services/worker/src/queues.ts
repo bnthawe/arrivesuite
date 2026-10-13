@@ -22,16 +22,30 @@ export function getReconciliationQueue(): Queue<ReconcileJobData> {
         removeOnFail: 500,
       },
     });
+    // BullMQ recommends an error listener: an unhandled 'error' event on
+    // a Redis hiccup can crash the process.
+    queue.on('error', (err) => {
+      console.error(`[queue] error: ${(err as Error)?.message ?? err}`);
+    });
   }
   return queue;
 }
 
+export async function closeReconciliationQueue(): Promise<void> {
+  if (queue) {
+    await queue.close();
+    queue = null;
+  }
+}
+
 export async function enqueueReconciliation(data: ReconcileJobData): Promise<string | undefined> {
   const q = getReconciliationQueue();
+  // Deduplicate re-enqueues of the same booking within 60s (BullMQ 5.x
+  // deduplication) instead of a Date.now() suffix that defeats it.
   const job = await q.add(
     data.bookingId ? 'reconcile-booking' : 'reconcile-sweep',
     data,
-    data.bookingId ? { jobId: `reconcile-${data.bookingId}-${Date.now()}` } : undefined,
+    data.bookingId ? { deduplication: { id: `reconcile-${data.bookingId}`, ttl: 60_000 } } : undefined,
   );
   return job.id;
 }
