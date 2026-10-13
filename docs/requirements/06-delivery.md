@@ -118,7 +118,7 @@ Sourced hotels (LiteAPI) and flights (OnArrival); Paystack primary with DPO Pay,
 - Silent price changes; generic error messages; claiming instant confirmation when ticketing is pending; non-accessible interactive components; deleting contracts (disable only); deleting audit events; revealing credentials without re-auth; rotating credentials without two-person approval.
 - Metasearch; Booking.com-on-their-terms; blockchain-native anything; crypto.
 - **The generic workflow engine** (`workflow_definitions` etc.) — replaced by §9 explicitly (§17.3, §6.4).
-- **Car rental and transfers in the extranet** — car rental is cut from the locked verticals and transfers is not one of them; neither gets supplier-side surfaces (D21).
+- **Car rental, transfers and visa in the extranet** — car rental is cut from the locked verticals, transfers was never one, and visa is excluded; none gets supplier-side surfaces (D21). The extranet covers local inventory only: stays, tours, places/destinations, events, MICE.
 
 ## 18.3 Deferred, Not Out
 
@@ -214,7 +214,7 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 | D18 | §5.14.3 authored as the ordered calculation pipeline | v2.4 listed it as present but absent |
 | D19 | FR-15.85 closed as the Availability endpoint | Numbering gap in v2.4 |
 | D20 | §5.16.14 RBAC matrix authored | FR-16.53 referenced a matrix that was never written |
-| D21 | MICE venues/RFQ enter MVP scope (§5.25, §6.18); car rental and transfers stay out of the extranet | Corporate demand funds the moat; car rental is cut from the locked verticals and transfers was never one — reopening either breaks the rebaseline |
+| D21 | MICE venues/RFQ enter MVP scope (§5.25, §6.18); car rental, transfers and visa stay out of the extranet (local inventory only: stays, tours, places/destinations, events, MICE) | Corporate demand funds the moat; the three excluded types were cut or never listed — reopening any breaks the rebaseline |
 | D22 | Providers pivoted per contract v1.0 (LiteAPI, OnArrival, Paystack + DPO/Flutterwave/Stripe) over v2.4's Duffel/Amadeus/PayTabs | §18.1 now records the shipped set; Amadeus-conditional language retired |
 
 ---

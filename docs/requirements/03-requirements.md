@@ -1434,7 +1434,9 @@ Mobile admin console, native desktop apps, custom dashboard layouts, advanced BI
 
 **FR-5.25.9 — Holds, options and RFQ inbox.** Date holds and options with expiry. Corporate requests run an RFQ inbox on the three-quote model: request → up to three supplier quotes → accept/decline with deadlines.
 
-**FR-5.25.10 — Other types later.** Activities, events and visa follow the same listing → availability → booking flows after the core three types. Visa handling flags passport-data PII handling (§15.7) before build.
+**FR-5.25.10 — Other types later.** Activities and events follow the same listing → availability → booking flows after the core three types. Visa is out of the extranet entirely (D21): no visa tables, no passport-data handling.
+
+**FR-5.25.29 — Places and destinations.** Suppliers list local places and destinations (attractions, landmarks, villages): name, geography, description, media, and links to related tours. Distinct from §6.8 reference geo, which stays platform-curated; supplier listings are attributed and trust-scored like any owned inventory.
 
 ## 5.25.3 Availability and double-booking prevention
 
