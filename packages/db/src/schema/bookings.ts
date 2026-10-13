@@ -1,10 +1,13 @@
-import { pgTable, uuid, varchar, text, timestamp, integer, numeric, char } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, integer, numeric } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
 import { channelEnum, bookingStatusEnum } from './enums';
 
 export const bookings = pgTable('bookings', {
   id: uuid('id').primaryKey().defaultRandom(),
-  ref: char('ref', { length: 16 }).notNull().unique(),
+  // Spec §6.17 says char(16) but refs are 15 chars; char blank-padding
+  // caused a real backfill bug, so varchar(16) holds the same values
+  // with no padding. Presentation trim is retained as a no-op guard.
+  ref: varchar('ref', { length: 16 }).notNull().unique(),
   accountId: uuid('account_id')
     .notNull()
     .references(() => accounts.id, { onDelete: 'restrict' }),
