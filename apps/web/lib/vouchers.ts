@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
+import { uploadVoucherPdf, voucherStorageMode } from './storage';
 
 export function voucherPathFor(ref: string): string {
   const base = process.env.VOUCHER_CDN_BASE ?? '/cdn/tickets';
@@ -8,9 +9,11 @@ export function voucherPathFor(ref: string): string {
 }
 
 function ticketsDir(): string {
-  // Served statically via public/ in dev and single-container deploys.
-  // Production CDN (R2/S3) upload is the go-live follow-up.
-  const dir = path.join(process.cwd(), 'public', 'cdn', 'tickets');
+  // process.cwd() is the web app dir under the intended runners
+  // (turbo, next started inside apps/web). Override when invoking
+  // from elsewhere, e.g. pnpm --filter from the repo root.
+  const dir =
+    process.env.VOUCHER_DIR ?? path.join(process.cwd(), 'public', 'cdn', 'tickets');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -86,5 +89,14 @@ export async function generateVoucherPdf(data: VoucherData): Promise<string> {
     stream.on('finish', () => resolve());
     stream.on('error', reject);
   });
+  // R2 mode uploads the finished PDF and returns the CDN path; any upload
+  // failure falls back to the locally served file (same path shape).
+  if (voucherStorageMode() === 'r2') {
+    try {
+      return await uploadVoucherPdf(data.ref, filePath);
+    } catch (err) {
+      console.error('[vouchers] R2 upload failed, serving locally', err);
+    }
+  }
   return voucherPathFor(data.ref);
 }
