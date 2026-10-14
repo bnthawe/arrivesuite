@@ -92,6 +92,20 @@
       "when": 1791921600000,
       "tag": "0012_availability",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791925200000,
+      "tag": "0013_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1791928800000,
+      "tag": "0014_no_show",
+      "breakpoints": true
     }
   ]
 }

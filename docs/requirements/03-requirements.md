@@ -54,7 +54,7 @@ The supplier onboarding funnel has 6 stages:
 
 ## 5.5.4 Property Management
 
-**FR-5.5.5 — Property CRUD.** Name, type (hotel | lodge | guesthouse | inn | bnb | camp), description, location (address, coordinates), contact details, check-in/out times, policies, star rating (self-declared).
+**FR-5.5.5 — Property CRUD.** Name, type (hotel | lodge | guesthouse | inn | motel | bnb | camp | villa | self-catering), description, location (address, coordinates), contact details, check-in/out times, policies, star rating (self-declared).
 
 **FR-5.5.6 — Media management.** Photos uploaded via WhatsApp, web, or field agent; auto-resized and EXIF-stripped; virus-scanned; cover image required for publishing; ≥5 photos recommended; alt text auto-generated (LLM) and editable.
 
@@ -1421,6 +1421,10 @@ Mobile admin console, native desktop apps, custom dashboard layouts, advanced BI
 **FR-5.25.3 — Multi-user roles.** One supplier account holds users with roles `owner`, `front_desk`, `finance`. All rows are per-supplier isolated (§6.12); a user sees only their supplier's data.
 
 **FR-5.25.4 — Profile completeness.** Profile holds photos, policies, cancellation terms and child terms (bands configurable per property, never hardcoded). Incomplete profiles cannot be activated.
+
+**FR-5.25.31 — Property policies.** Each property carries structured policies: cancellation terms reference, child terms, pet/smoking/quiet-house rules, check-in/out times, and self-declared star rating. Rate plans carry one policy-library entry (FR-5.20.1) plus a refundable flag; the property types are hotel | lodge | guesthouse | inn | motel | bnb | camp | villa | self-catering.
+
+**FR-5.25.32 — No-show charges.** Supplier no-show marking (FR-5.5.31) charges per the booked rate plan's policy. The fee is recorded on the audit trail with the marking; ledger posting of `no_show_fee` lines (FR-5.14.39) follows the fee-policy decision — never an informal adjustment.
 
 **FR-5.25.5 — Terms acceptance record.** T&C and commission-schedule acceptance is a timestamped, versioned row — not a checkbox that vanishes.
 

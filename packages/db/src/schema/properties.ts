@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, integer, char } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, integer, char, jsonb, time, numeric, boolean } from 'drizzle-orm/pg-core';
 import { suppliers } from './suppliers';
 
 // §6.3 accommodation slice (FR-5.25.6). Date-specific prices, allotments
@@ -12,6 +12,11 @@ export const properties = pgTable('properties', {
   type: varchar('type', { length: 30 }).notNull().default('hotel'),
   description: text('description'),
   countryCode: char('country_code', { length: 2 }).notNull().default('BW'),
+  policies: jsonb('policies').notNull().default({}),
+  photos: jsonb('photos').notNull().default([]),
+  checkInTime: time('check_in_time'),
+  checkOutTime: time('check_out_time'),
+  starRating: numeric('star_rating', { precision: 2, scale: 1 }),
   status: varchar('status', { length: 20 }).notNull().default('draft'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -40,6 +45,9 @@ export const ratePlans = pgTable('rate_plans', {
   mealPlan: varchar('meal_plan', { length: 50 }),
   baseNightlyCents: integer('base_nightly_cents').notNull(),
   minStay: integer('min_stay').notNull().default(1),
+  maxStay: integer('max_stay'),
+  cancellationPolicy: varchar('cancellation_policy', { length: 20 }).notNull().default('flexible'),
+  refundable: boolean('refundable').notNull().default(true),
   status: varchar('status', { length: 20 }).notNull().default('draft'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

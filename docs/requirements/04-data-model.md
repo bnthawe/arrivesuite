@@ -153,7 +153,7 @@ No `updated_at`. A database trigger rejects UPDATE/DELETE; the application role 
 | id | uuid PK | |
 | supplier_id | uuid FK→suppliers | |
 | name | text | |
-| type | text | `hotel`, `lodge`, `guesthouse`, `inn`, `bnb`, `camp` |
+| type | text | `hotel`, `lodge`, `guesthouse`, `inn`, `motel`, `bnb`, `camp`, `villa`, `self-catering` |
 | description | text | |
 | geog | geography(Point) | PostGIS, GiST-indexed |
 | country_code | char(2) | |

@@ -192,9 +192,11 @@ export default function PropertiesManager() {
           <option value="hotel">hotel</option>
           <option value="guesthouse">guesthouse</option>
           <option value="inn">inn</option>
+          <option value="motel">motel</option>
           <option value="bnb">bnb</option>
           <option value="camp">camp</option>
           <option value="villa">villa</option>
+          <option value="self-catering">self-catering</option>
         </select>
         <button className={btn} onClick={addProperty}>Add</button>
       </div>

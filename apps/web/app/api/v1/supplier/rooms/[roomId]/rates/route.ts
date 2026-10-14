@@ -9,6 +9,9 @@ const createRateSchema = z.object({
   mealPlan: z.string().max(50).optional(),
   baseNightlyCents: z.number().int().min(0),
   minStay: z.number().int().min(1).max(365).default(1),
+  maxStay: z.number().int().min(1).max(365).optional(),
+  cancellationPolicy: z.enum(['flexible', 'moderate', 'strict', 'non_refundable']).default('flexible'),
+  refundable: z.boolean().default(true),
 });
 
 async function ownRoom(supplierId: string, roomId: string) {
@@ -61,6 +64,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ roo
       mealPlan: parsed.data.mealPlan ?? null,
       baseNightlyCents: parsed.data.baseNightlyCents,
       minStay: parsed.data.minStay,
+      maxStay: parsed.data.maxStay ?? null,
+      cancellationPolicy: parsed.data.cancellationPolicy,
+      refundable: parsed.data.refundable,
     })
     .returning();
   return NextResponse.json({ rate }, { status: 201 });
