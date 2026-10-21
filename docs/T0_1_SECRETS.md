@@ -34,11 +34,12 @@ values remain in the ignored `.env.local`.
 
 ```powershell
 git grep -n -E "B3F59BE7|54841|85325|5436 8862|4012 8888|3456 7890" -- ':!pnpm-lock.yaml'
-git grep -n -E "sk_live_[A-Za-z0-9]|FLWSECK-[A-Za-z0-9]" -- ':!pnpm-lock.yaml'
+git grep -n -E "sk_live_[A-Za-z0-9]|FLWSECK-[A-Za-z0-9]" -- ':!pnpm-lock.yaml' ':!**/*.test.ts'
 ```
 
-Both return no matches. The only remaining DPO values are placeholders in
-`.env.example`, and the sandbox documentation URL.
+Both return no matches. The only `sk_live_` strings are fake fixtures in
+`packages/integrations/src/paystack.test.ts`. The only remaining DPO values are
+placeholders in `.env.example`, and the sandbox documentation URL.
 
 ## Remaining
 
