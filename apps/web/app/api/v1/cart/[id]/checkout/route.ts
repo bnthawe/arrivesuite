@@ -24,7 +24,7 @@ const checkoutSchema = z.object({
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return withIdempotency(request, { scope: 'cart.checkout', identity: id }, () =>
+  return withIdempotency(request, { scope: 'cart.checkout', identity: id, audit: false }, () =>
     handlePost(request, ctx),
   );
 }

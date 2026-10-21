@@ -19,7 +19,7 @@ const orderSchema = flightOrderRequestSchema.extend({
 });
 
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'flights.order' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'flights.order', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

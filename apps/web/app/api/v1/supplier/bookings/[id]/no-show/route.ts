@@ -17,7 +17,7 @@ const noShowSchema = z.object({
 // (ledger posting follows the fee-policy decision, FR-5.25.32).
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/bookings/[id]/no-show', identity: id }, () => handlePost(request, ctx));
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/bookings/[id]/no-show', identity: id, audit: false }, () => handlePost(request, ctx));
 }
 
 async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {

@@ -14,7 +14,7 @@ const acceptSchema = z.object({
 // Only the requester accepts, exactly one quote wins, the rest decline.
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs/[id]/accept', identity: id }, () => handlePost(request, ctx));
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs/[id]/accept', identity: id, audit: false }, () => handlePost(request, ctx));
 }
 
 async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {

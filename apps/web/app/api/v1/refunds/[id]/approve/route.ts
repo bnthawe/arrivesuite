@@ -16,7 +16,7 @@ const approveSchema = z.object({
 // completed/failed, with bookings.refundedCents updated on success.
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return withIdempotency(request, { scope: 'refunds.approve', identity: id }, () =>
+  return withIdempotency(request, { scope: 'refunds.approve', identity: id, audit: false }, () =>
     handlePost(request, ctx),
   );
 }

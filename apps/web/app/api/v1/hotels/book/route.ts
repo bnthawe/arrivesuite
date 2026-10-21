@@ -22,7 +22,7 @@ const bookSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'hotels.book' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'hotels.book', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

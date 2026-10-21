@@ -24,7 +24,7 @@ const createBookingSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'bookings.create' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'bookings.create', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

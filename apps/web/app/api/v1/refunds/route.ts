@@ -13,7 +13,7 @@ const requestSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'refunds.create' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'refunds.create', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

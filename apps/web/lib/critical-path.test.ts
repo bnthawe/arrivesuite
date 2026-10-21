@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { IdempotencyStore } from './idempotency';
 
 // Booking creation enqueues reconciliation as a best-effort side effect. Keep
 // this test focused on the database state machine and capture transaction.
@@ -10,15 +11,43 @@ vi.mock('./queues', () => ({
 type DbModule = typeof import('@arrivesuite/db');
 type BookingModule = typeof import('./bookings-core');
 type CaptureModule = typeof import('./payments-capture');
+type IdempotencyModule = typeof import('./idempotency');
 type DrizzleModule = typeof import('drizzle-orm');
 
 const testDatabase = process.env.TEST_DATABASE_URL;
 const suite = testDatabase ? describe : describe.skip;
 
+class MemoryStore implements IdempotencyStore {
+  private entries = new Map<string, string>();
+
+  async claim(key: string, value: string): Promise<boolean> {
+    if (this.entries.has(key)) return false;
+    this.entries.set(key, value);
+    return true;
+  }
+
+  async get(key: string): Promise<string | null> {
+    return this.entries.get(key) ?? null;
+  }
+
+  async complete(key: string, claimValue: string, value: string): Promise<boolean> {
+    if (this.entries.get(key) !== claimValue) return false;
+    this.entries.set(key, value);
+    return true;
+  }
+
+  async release(key: string, claimValue: string): Promise<boolean> {
+    if (this.entries.get(key) !== claimValue) return false;
+    this.entries.delete(key);
+    return true;
+  }
+}
+
 suite('critical path: booking creation and payment capture', () => {
   let dbm: DbModule;
   let bookingm: BookingModule;
   let capturem: CaptureModule;
+  let idempotencym: IdempotencyModule;
   let dz: DrizzleModule;
 
   const bookingIds: string[] = [];
@@ -31,6 +60,7 @@ suite('critical path: booking creation and payment capture', () => {
     dbm = await import('@arrivesuite/db');
     bookingm = await import('./bookings-core');
     capturem = await import('./payments-capture');
+    idempotencym = await import('./idempotency');
     dz = await import('drizzle-orm');
   });
 
@@ -213,5 +243,56 @@ suite('critical path: booking creation and payment capture', () => {
       .limit(1);
     expect(bookingAfter.status).toBe('cancelled');
     expect(bookingAfter.paidCents).toBe(0);
+  });
+
+  it('writes one request audit row per write and none for an idempotent replay', async () => {
+    const store = new MemoryStore();
+    const key = randomUUID();
+    const traceId = randomUUID();
+    traces.push(traceId);
+
+    const makeRequest = () =>
+      new Request('https://example.com/api/v1/test-audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': key,
+          'X-Forwarded-For': '203.0.113.9',
+          'X-Trace-Id': traceId,
+        },
+        body: JSON.stringify({ secret: 'never-log-this' }),
+      });
+    const handler = async () => Response.json({ ok: true }, { status: 201 });
+
+    const first = await idempotencym.withIdempotency(
+      makeRequest(),
+      { scope: 'test.audit' },
+      handler,
+      store,
+    );
+    const replay = await idempotencym.withIdempotency(
+      makeRequest(),
+      { scope: 'test.audit' },
+      handler,
+      store,
+    );
+
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.headers.get('Idempotent-Replayed')).toBe('true');
+
+    const rows = await dbm.db
+      .select()
+      .from(dbm.auditEvents)
+      .where(dz.eq(dbm.auditEvents.traceId, traceId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: 'api.write',
+      entityType: 'api_route',
+      entityId: 'POST /api/v1/test-audit',
+      ip: '203.0.113.9',
+      traceId,
+    });
+    expect(JSON.stringify(rows[0].diff)).not.toContain('never-log-this');
   });
 });

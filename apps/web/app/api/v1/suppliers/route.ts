@@ -15,7 +15,7 @@ const onboardSchema = z.object({
 // Supplier self-onboarding: one profile per supplier-realm account,
 // starting at prospect for the admin approval funnel.
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'route:POST:/api/v1/suppliers' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/suppliers', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

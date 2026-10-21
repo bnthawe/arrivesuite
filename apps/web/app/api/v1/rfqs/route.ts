@@ -16,7 +16,7 @@ const createRfqSchema = z.object({
 
 // Any authenticated account can raise a corporate request.
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

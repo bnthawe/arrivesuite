@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 // Suppliers quote open RFQs (three-quote model: requester accepts one).
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs/[id]/quotes', identity: id }, () => handlePost(request, ctx));
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs/[id]/quotes', identity: id, audit: false }, () => handlePost(request, ctx));
 }
 
 async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {

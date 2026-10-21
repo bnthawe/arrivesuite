@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { recordWriteAudit } from './audit';
 import { getRedis } from './redis';
 
 // ADR-0014 / FR-5.15.34: client-generated key, server dedupe, 24h retention.
@@ -99,6 +100,9 @@ export interface IdempotencyOptions {
   identity?: string | null;
   required?: boolean;
   ttlSeconds?: number;
+  // Defaults to true. Set false when the handler already writes a more
+  // specific domain audit event, so one write does not create two rows.
+  audit?: boolean;
 }
 
 type ProcessingRecord = {
@@ -134,10 +138,7 @@ export async function withIdempotency(
         'idempotency_key_required',
       );
     }
-    return (
-      (await handler()) ??
-      Response.json({ error: 'Handler returned no response' }, { status: 500 })
-    );
+    return runHandler(request, options, handler);
   }
 
   const key = header.trim();
@@ -209,9 +210,7 @@ export async function withIdempotency(
 
   let response: Response;
   try {
-    response =
-      (await handler()) ??
-      Response.json({ error: 'Handler returned no response' }, { status: 500 });
+    response = await runHandler(request, options, handler);
   } catch (err) {
     await silentRelease(store, storeKey, claimValue);
     throw err;
@@ -243,6 +242,20 @@ export async function withIdempotency(
     console.error(`[idempotency] could not cache ${options.scope}:`, err);
   }
 
+  return response;
+}
+
+async function runHandler(
+  request: Request,
+  options: IdempotencyOptions,
+  handler: () => Promise<Response | undefined>,
+): Promise<Response> {
+  const response =
+    (await handler()) ??
+    Response.json({ error: 'Handler returned no response' }, { status: 500 });
+  if (options.audit !== false) {
+    await recordWriteAudit(request, options.scope, response);
+  }
   return response;
 }
 

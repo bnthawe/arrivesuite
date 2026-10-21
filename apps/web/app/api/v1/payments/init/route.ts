@@ -22,7 +22,7 @@ const initSchema = z.object({
 });
 
 export async function POST(request: Request) {
-  return withIdempotency(request, { scope: 'payments.init' }, () => handlePost(request));
+  return withIdempotency(request, { scope: 'payments.init', audit: false }, () => handlePost(request));
 }
 
 async function handlePost(request: Request) {

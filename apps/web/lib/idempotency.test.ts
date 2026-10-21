@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { withIdempotency, type IdempotencyStore } from './idempotency';
 
 const KEY = '11111111-1111-4111-8111-111111111111';
-const OPTIONS = { scope: 'test.write', identity: 'account-1' };
+const OPTIONS = { scope: 'test.write', identity: 'account-1', audit: false };
 
 class MemoryStore implements IdempotencyStore {
   private entries = new Map<string, string>();

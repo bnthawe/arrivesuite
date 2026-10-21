@@ -105,7 +105,7 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 | Task | Effort | Blocker? | Notes |
 |---|---|---|---|
 | T0.1 - Secrets | 1 day | Yes | Done: committed DPO sandbox token/service ids/test cards removed; `.env.example` placeholders; runtime values stay in ignored `.env.local` (`docs/T0_1_SECRETS.md`) |
-| T0.2 — Audit | 2 days | Yes | Middleware on POST/PUT/DELETE |
+| T0.2 — Audit | 2 days | Yes | Done: request-level audit on guarded writes, cached actor resolution, domain-route opt-outs (`docs/T0_2_AUDIT.md`) |
 | T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 37 route files covered (`docs/T0_3_IDEMPOTENCY.md`) |
 | T0.4 - State machine | 2 days | Yes | Done: §9.1 states/transition map, `pending_payment` backfill, atomic capture transition, no-show guard (`docs/T0_4_STATE_MACHINE.md`) |
 | T0.5 - Tests | 3 days | Yes | Done: unit tests, DB-backed booking/capture critical path, PostgreSQL service and `pnpm test` in CI (`docs/T0_5_TESTS.md`); browser/refund E2E pending |
