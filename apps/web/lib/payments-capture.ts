@@ -1,5 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { auditEvents, bookings, db, paymentIntents, payments } from '@arrivesuite/db';
+import { canTransition } from './booking-state';
 import { bookingRevenueLines, postLedgerLines } from './ledger';
 
 export interface CaptureInput {
@@ -13,6 +14,16 @@ export interface CaptureInput {
 export type CaptureResult =
   | { ok: true; paymentId: string; replayed: boolean }
   | { ok: false; status: number; error: string };
+
+class CaptureTransitionError extends Error {
+  constructor(
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CaptureTransitionError';
+  }
+}
 
 // Single capture path for Paystack webhooks and DPO return verification.
 // providerRef is the idempotency key: duplicate deliveries replay.
@@ -56,35 +67,81 @@ export async function capturePaymentByProviderRef(input: CaptureInput): Promise<
 
   // Claim the intent atomically. Two concurrent webhook/return deliveries
   // cannot both insert a payment or add paidCents twice: the conditional
-  // update only succeeds for the first caller.
-  const payment = await db.transaction(async (tx) => {
-    const [claimed] = await tx
-      .update(paymentIntents)
-      .set({ state: 'captured' })
-      .where(and(eq(paymentIntents.id, intent.id), eq(paymentIntents.state, 'requires_payment')))
-      .returning();
-    if (!claimed) return null;
+  // update only succeeds for the first caller. The booking row is locked in
+  // the same transaction so the Section 9.1 pending_payment -> confirmed transition
+  // and the payment/paidCents update commit together.
+  const outcome = await db
+    .transaction(async (tx) => {
+      const [claimed] = await tx
+        .update(paymentIntents)
+        .set({ state: 'captured' })
+        .where(and(eq(paymentIntents.id, intent.id), eq(paymentIntents.state, 'requires_payment')))
+        .returning();
+      if (!claimed) return null;
 
-    const [created] = await tx
-      .insert(payments)
-      .values({
-        intentId: intent.id,
-        providerPaymentId: input.providerPaymentId,
-        amountCents: input.amountCents,
-        currency: input.currency.toUpperCase(),
-        status: 'captured',
-        capturedAt: new Date(),
-      })
-      .returning();
+      const [booking] = await tx
+        .select()
+        .from(bookings)
+        .where(eq(bookings.id, intent.bookingId))
+        .limit(1)
+        .for('update');
+      if (!booking) {
+        throw new CaptureTransitionError(409, 'Booking not found');
+      }
+      if (!canTransition(booking.status, 'confirmed')) {
+        throw new CaptureTransitionError(409, `Booking is ${booking.status}`);
+      }
 
-    await tx
-      .update(bookings)
-      .set({ paidCents: sql`${bookings.paidCents} + ${input.amountCents}` })
-      .where(eq(bookings.id, intent.bookingId));
+      const [created] = await tx
+        .insert(payments)
+        .values({
+          intentId: intent.id,
+          providerPaymentId: input.providerPaymentId,
+          amountCents: input.amountCents,
+          currency: input.currency.toUpperCase(),
+          status: 'captured',
+          capturedAt: new Date(),
+        })
+        .returning();
 
-    return created;
-  });
+      await tx
+        .update(bookings)
+        .set({
+          paidCents: sql`${bookings.paidCents} + ${input.amountCents}`,
+          status: 'confirmed',
+          updatedAt: new Date(),
+        })
+        .where(eq(bookings.id, intent.bookingId));
 
+      await tx.insert(auditEvents).values({
+        action: 'booking.transition',
+        entityType: 'booking',
+        entityId: booking.id,
+        diff: {
+          from: booking.status,
+          to: 'confirmed',
+          reason: 'payment_captured',
+          paymentIntentId: intent.id,
+          paymentId: created.id,
+        },
+        traceId: input.traceId,
+      });
+
+      return created;
+    })
+    .catch((err: unknown) => {
+      if (err instanceof CaptureTransitionError) return { transitionError: err };
+      throw err;
+    });
+
+  if (outcome && 'transitionError' in outcome) {
+    return {
+      ok: false,
+      status: outcome.transitionError.statusCode,
+      error: outcome.transitionError.message,
+    };
+  }
+  const payment = outcome;
   if (!payment) {
     return { ok: true, paymentId: '', replayed: true };
   }

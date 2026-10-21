@@ -16,7 +16,8 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/seed.ts",
-    "db:migrate": "tsx src/migrate.ts"
+    "db:migrate": "tsx src/migrate.ts && tsx src/backfill-booking-status.ts",
+    "db:backfill-booking-status": "tsx src/backfill-booking-status.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

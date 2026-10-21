@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level idempotency is implemented and verified; a live Paystack sandbox run remains
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level idempotency and the core booking state machine are implemented and verified; a live Paystack sandbox run remains
 
 ---
 
@@ -106,8 +106,8 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 |---|---|---|---|
 | T0.1 — Secrets | 1 day | Yes | Move runtime secrets to `.env.local` |
 | T0.2 — Audit | 2 days | Yes | Middleware on POST/PUT/DELETE |
-| T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 29 route files covered |
-| T0.4 — State machine | 2 days | Yes | Implement §9.1 transitions in code |
+| T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 37 route files covered (`docs/T0_3_IDEMPOTENCY.md`) |
+| T0.4 - State machine | 2 days | Yes | Done: §9.1 states/transition map, `pending_payment` backfill, atomic capture transition, no-show guard (`docs/T0_4_STATE_MACHINE.md`) |
 | T0.5 — Tests | 3 days | Yes | Critical-path tests plus CI gate |
 | T0.6 — DPO Pay sandbox | 2–3 days | Phase 1 gate | Can run in parallel with T0.1–T0.5 |
 

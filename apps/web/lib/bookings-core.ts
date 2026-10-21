@@ -217,6 +217,7 @@ export async function createBooking(
           ref,
           accountId: input.accountId,
           channel: input.channel,
+          status: 'pending_payment',
           currency: input.currency.toUpperCase(),
           baseCurrency: 'BWP',
           subtotalCents,

@@ -13,6 +13,12 @@ export const bookingStatusEnum = pgEnum('booking_status', [
   'expired',
   'failed',
   'no_show',
+  'draft',
+  'pending_payment',
+  'ticketing',
+  'ticketed',
+  'exchanging',
+  'fulfilled',
 ]);
 
 export const bookingItemStatusEnum = pgEnum('booking_item_status', [

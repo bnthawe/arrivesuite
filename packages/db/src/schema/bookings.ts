@@ -12,7 +12,7 @@ export const bookings = pgTable('bookings', {
     .notNull()
     .references(() => accounts.id, { onDelete: 'restrict' }),
   channel: channelEnum('channel').notNull(),
-  status: bookingStatusEnum('status').notNull().default('pending'),
+  status: bookingStatusEnum('status').notNull().default('pending_payment'),
   currency: varchar('currency', { length: 3 }).notNull(),
   baseCurrency: varchar('base_currency', { length: 3 }).notNull(),
   fxRateBps: integer('fx_rate_bps'),

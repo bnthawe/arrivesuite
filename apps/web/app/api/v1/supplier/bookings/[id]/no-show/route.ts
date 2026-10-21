@@ -1,8 +1,9 @@
 import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { auditEvents, bookingItems, bookings, db, properties, roomTypes, tours } from '@arrivesuite/db';
+import { canTransition } from '@/lib/booking-state';
 import { requireSupplier } from '@/lib/supplier';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 
@@ -43,7 +44,7 @@ async function handlePost(request: Request, { params }: { params: Promise<{ id: 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
-  if (booking.status !== 'confirmed' && booking.status !== 'pending') {
+  if (!canTransition(booking.status, 'no_show')) {
     return NextResponse.json({ error: `Booking is ${booking.status}` }, { status: 409 });
   }
 
@@ -69,7 +70,14 @@ async function handlePost(request: Request, { params }: { params: Promise<{ id: 
     }
   }
 
-  await db.update(bookings).set({ status: 'no_show' }).where(eq(bookings.id, id));
+  const [updated] = await db
+    .update(bookings)
+    .set({ status: 'no_show', updatedAt: new Date() })
+    .where(and(eq(bookings.id, id), eq(bookings.status, booking.status)))
+    .returning({ id: bookings.id });
+  if (!updated) {
+    return NextResponse.json({ error: 'Booking state changed' }, { status: 409 });
+  }
   await db.insert(auditEvents).values({
     actorId: gate.account.id,
     actorRealm: 'supplier',

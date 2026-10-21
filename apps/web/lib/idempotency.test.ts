@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { withIdempotency, type IdempotencyStore } from './idempotency';
 
 const KEY = '11111111-1111-4111-8111-111111111111';
@@ -235,11 +235,21 @@ describe('withIdempotency', () => {
       throw new Error('redis down');
     };
 
-    const response = await withIdempotency(makeRequest(), OPTIONS, async () => json({ ok: true }), store);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const response = await withIdempotency(
+        makeRequest(),
+        OPTIONS,
+        async () => json({ ok: true }),
+        store,
+      );
 
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'idempotency_store_unavailable',
-    });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'idempotency_store_unavailable',
+      });
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
