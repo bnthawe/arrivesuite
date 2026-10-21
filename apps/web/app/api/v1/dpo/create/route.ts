@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createDpoToken, dpoHostedPageUrl } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
+import { withIdempotency } from '@/lib/idempotency';
 
 const createSchema = z.object({
   amount: z.number().int().min(1),
@@ -14,6 +15,10 @@ const createSchema = z.object({
 // Thin DPO token endpoint for sandbox verification and ops checks.
 // Booking-bound flows should use POST /api/v1/payments/init instead.
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'dpo.create' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();

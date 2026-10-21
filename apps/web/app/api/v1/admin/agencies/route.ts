@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { desc } from 'drizzle-orm';
@@ -18,6 +19,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/admin/agencies' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   const gate = await requireAdmin(request);
   if ('response' in gate) return gate.response;
 

@@ -73,7 +73,7 @@ DPO Pay v6 is XML, not JSON. Send `Content-Type: application/xml`; parse the `<R
 
 ## Acceptance Criteria
 
-- Five or more end-to-end cycles: create, verify, return, refund, idempotency. **Progress: 5/5 payment cycles; callback idempotency and a live Paystack sandbox run remain.**
+- Five or more end-to-end cycles: create, verify, return, refund, idempotency. **Progress: 5/5 payment cycles; app-level duplicate delivery verified; a live Paystack sandbox run remains.**
 - Paid state is derived from `verifyToken`, never from a return URL.
 - Duplicate returns/callbacks cannot create a second payment or confirmation.
 - Refunds cannot exceed the original charge or run twice.

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createBooking } from '@/lib/bookings-core';
+import { withIdempotency } from '@/lib/idempotency';
 
 const itemSchema = z.object({
   itemType: z.string().min(1).max(50),
@@ -23,6 +24,10 @@ const createBookingSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'bookings.create' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();

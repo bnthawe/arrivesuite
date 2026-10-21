@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -13,7 +14,12 @@ const noShowSchema = z.object({
 // FR-5.5.31: the supplier marks no-show within 24h of arrival. Only
 // bookings containing this supplier's items; the fee is recorded in audit
 // (ledger posting follows the fee-policy decision, FR-5.25.32).
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/bookings/[id]/no-show', identity: id }, () => handlePost(request, ctx));
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { id } = await params;

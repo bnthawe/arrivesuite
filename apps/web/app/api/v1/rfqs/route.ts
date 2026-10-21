@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { desc, eq } from 'drizzle-orm';
@@ -15,6 +16,10 @@ const createRfqSchema = z.object({
 
 // Any authenticated account can raise a corporate request.
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   const account = await getSessionAccount(request);
   if (!account) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

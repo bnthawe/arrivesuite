@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCachedOffer } from '@/lib/prebooks';
@@ -16,6 +17,10 @@ const addItemSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/cart/items' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();

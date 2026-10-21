@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -11,7 +12,12 @@ const acceptSchema = z.object({
 });
 
 // Only the requester accepts, exactly one quote wins, the rest decline.
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/rfqs/[id]/accept', identity: id }, () => handlePost(request, ctx));
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const account = await getSessionAccount(request);
   if (!account) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });

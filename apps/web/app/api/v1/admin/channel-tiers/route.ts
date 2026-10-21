@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, channelMarkupTiers } from '@arrivesuite/db';
@@ -18,6 +19,10 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  return withIdempotency(request, { scope: 'route:PUT:/api/v1/admin/channel-tiers' }, () => handlePut(request));
+}
+
+async function handlePut(request: Request) {
   const gate = await requireAdmin(request);
   if ('response' in gate) return gate.response;
 

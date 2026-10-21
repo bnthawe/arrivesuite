@@ -6,6 +6,7 @@ import { clearCart, getCart } from '@/lib/cart';
 import { getCachedOffer } from '@/lib/prebooks';
 import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { withIdempotency } from '@/lib/idempotency';
 import { sendBookingConfirmation } from '@/lib/notifications';
 import { qrDataUrl, qrPngBuffer, verifyUrlFor } from '@/lib/qr';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
@@ -21,7 +22,14 @@ const checkoutSchema = z.object({
   segment: z.enum(['b2c', 'b2b', 'agent', 'govt']).default('b2c'),
 });
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'cart.checkout', identity: id }, () =>
+    handlePost(request, ctx),
+  );
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   let body: unknown;

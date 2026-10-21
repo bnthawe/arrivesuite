@@ -44,7 +44,27 @@ Each paid token was verified twice. Both calls returned identical results:
 }
 ```
 
-Provider-level verification is stable and safe to repeat. Full duplicate-return/callback idempotency still needs the app/database path; the `payments-capture` helper uses `providerRef` as its replay key, but concurrent-request hardening belongs to T0.3.
+Provider-level verification is stable and safe to repeat.
+
+---
+
+## App-level Duplicate Delivery (2026-10-21)
+
+The app/database path was tested against a local `arrivesuite_test` database and Redis DB 1. Paystack sandbox mode was used because it shares the same `capturePaymentByProviderRef` path as the DPO return handler.
+
+| Check | Result |
+|---|---|
+| Same `Idempotency-Key` + same booking payload | First `201`; second `201` with `Idempotent-Replayed: true`; one booking row |
+| Same `Idempotency-Key` + different booking payload | `409` `idempotency_key_conflict` |
+| Duplicate Paystack webhook, sequential | First returned a `paymentId`; second returned `{ "ok": true, "replayed": true }` |
+| Duplicate Paystack webhook, concurrent | One `paymentId`; one `{ "replayed": true }`; one `payments` row |
+| Booking after capture | `paid_cents = 10000` (not doubled) |
+| Duplicate refund request key | First `201`; second replayed the same refund |
+| Concurrent refund requests, different keys | One `201`; one `409` balance exceeded; one refund row |
+| Concurrent refund approvals, different keys | One `200` completed; one `409` already processing; one `refund.completed` audit |
+| Booking after refunds | `refunded_cents = 10000` (not doubled) |
+
+The DPO return handler calls the same atomic `capturePaymentByProviderRef` helper, so the concurrent-callback protection applies to DPO returns as well. A direct DPO return replay was not run against the test database because it contained no paid DPO token. See `docs/T0_3_IDEMPOTENCY.md` for implementation and coverage.
 
 ---
 
@@ -71,7 +91,7 @@ After both 50.00 refunds, `verifyToken` still returned:
 
 **DPO does not treat `refundRef` as an idempotency key.** The second refund used a different `refundRef` and succeeded again. A retry with the same logical refund could therefore double-refund unless ArriveSuite enforces idempotency and the remaining refundable balance.
 
-The existing refund routes already calculate the remaining balance from `refunds.amountCents`; this must remain mandatory. The approve route's `pending → approved` check is sequential, but concurrent approvals still need an atomic claim or request idempotency key (T0.3).
+The refund routes calculate the remaining balance from `refunds.amountCents`; this remains mandatory. The approve route now uses an atomic `pending → approved` conditional update plus the route-level `Idempotency-Key` guard, so concurrent approvals cannot both reach the provider.
 
 ---
 
@@ -84,6 +104,7 @@ The existing refund routes already calculate the remaining balance from `refunds
 5. **Provider refunds are not idempotent.** DPO accepted two 50.00 refunds and rejected only the third for exceeding the captured amount. ArriveSuite must enforce idempotency and the refundable balance.
 6. **Refund state is not visible in `verifyToken`.** After a full refund the transaction still reports `Transaction Paid` with `TransactionNetAmount 0.00`; refund status must come from the `refunds` table, not the provider verification endpoint.
 7. **The sandbox does not challenge this test Visa with 3-D Secure.** EU-card 3-D Secure remains unvalidated (§19.3).
+8. **App-level idempotency now covers duplicate delivery.** Route responses are cached in Redis for 24 hours, captures claim the intent atomically, and refund approval claims the pending refund atomically.
 
 ---
 
@@ -91,9 +112,9 @@ The existing refund routes already calculate the remaining balance from `refunds
 
 - [x] 5 payment cycles.
 - [x] Duplicate provider verification is stable.
-- [ ] Full duplicate return/callback test through the app and database (T0.3 dependency).
+- [x] Full duplicate return/callback test through the app and database (T0.3). Sequential and concurrent Paystack webhooks produced one capture; the DPO return handler shares the same helper.
 - [x] Partial refund and over-refund rejection.
-- [x] Duplicate-refund behaviour documented; app-level idempotency required.
+- [x] Duplicate-refund behaviour documented; app-level idempotency implemented with an atomic approval claim.
 - [x] Paystack fallback shape and error mapping covered by mocked tests (`paystack.test.ts`, `http.test.ts`). A live Paystack sandbox run still needs credentials.
 - [ ] EU-issued card / 3-D Secure behaviour, if DPO can provide a test card.
 

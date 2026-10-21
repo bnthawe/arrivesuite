@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -29,7 +30,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
   return NextResponse.json({ holds });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ spaceId: string }> }) {
+  const { spaceId } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/spaces/[spaceId]/holds', identity: spaceId }, () => handlePost(request, ctx));
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { spaceId } = await params;
@@ -66,7 +72,12 @@ const releaseSchema = z.object({
   state: z.enum(['released', 'converted']),
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ spaceId: string }> }) {
+  const { spaceId } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:PATCH:/api/v1/supplier/spaces/[spaceId]/holds', identity: spaceId }, () => handlePatch(request, ctx));
+}
+
+async function handlePatch(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { spaceId } = await params;

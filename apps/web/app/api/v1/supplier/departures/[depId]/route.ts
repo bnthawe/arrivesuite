@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -9,7 +10,12 @@ const patchDepartureSchema = z.object({
   status: z.enum(['scheduled', 'confirmed', 'cancelled']).optional(),
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ depId: string }> }) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ depId: string }> }) {
+  const { depId } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:PATCH:/api/v1/supplier/departures/[depId]', identity: depId }, () => handlePatch(request, ctx));
+}
+
+async function handlePatch(request: Request, { params }: { params: Promise<{ depId: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { depId } = await params;

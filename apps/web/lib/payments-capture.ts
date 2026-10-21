@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { auditEvents, bookings, db, paymentIntents, payments } from '@arrivesuite/db';
 import { bookingRevenueLines, postLedgerLines } from './ledger';
 
@@ -36,6 +36,9 @@ export async function capturePaymentByProviderRef(input: CaptureInput): Promise<
   if (intent.state === 'captured') {
     return { ok: true, paymentId: '', replayed: true };
   }
+  if (intent.state !== 'requires_payment') {
+    return { ok: false, status: 409, error: `Payment intent is ${intent.state}` };
+  }
   if (intent.expiresAt.getTime() <= Date.now()) {
     await db.update(paymentIntents).set({ state: 'expired' }).where(eq(paymentIntents.id, intent.id));
     return { ok: false, status: 410, error: 'Payment intent expired' };
@@ -51,23 +54,40 @@ export async function capturePaymentByProviderRef(input: CaptureInput): Promise<
     return { ok: false, status: 409, error: 'Amount mismatch' };
   }
 
-  const [payment] = await db
-    .insert(payments)
-    .values({
-      intentId: intent.id,
-      providerPaymentId: input.providerPaymentId,
-      amountCents: input.amountCents,
-      currency: input.currency.toUpperCase(),
-      status: 'captured',
-      capturedAt: new Date(),
-    })
-    .returning();
+  // Claim the intent atomically. Two concurrent webhook/return deliveries
+  // cannot both insert a payment or add paidCents twice: the conditional
+  // update only succeeds for the first caller.
+  const payment = await db.transaction(async (tx) => {
+    const [claimed] = await tx
+      .update(paymentIntents)
+      .set({ state: 'captured' })
+      .where(and(eq(paymentIntents.id, intent.id), eq(paymentIntents.state, 'requires_payment')))
+      .returning();
+    if (!claimed) return null;
 
-  await db.update(paymentIntents).set({ state: 'captured' }).where(eq(paymentIntents.id, intent.id));
-  await db
-    .update(bookings)
-    .set({ paidCents: sql`${bookings.paidCents} + ${input.amountCents}` })
-    .where(eq(bookings.id, intent.bookingId));
+    const [created] = await tx
+      .insert(payments)
+      .values({
+        intentId: intent.id,
+        providerPaymentId: input.providerPaymentId,
+        amountCents: input.amountCents,
+        currency: input.currency.toUpperCase(),
+        status: 'captured',
+        capturedAt: new Date(),
+      })
+      .returning();
+
+    await tx
+      .update(bookings)
+      .set({ paidCents: sql`${bookings.paidCents} + ${input.amountCents}` })
+      .where(eq(bookings.id, intent.bookingId));
+
+    return created;
+  });
+
+  if (!payment) {
+    return { ok: true, paymentId: '', replayed: true };
+  }
 
   await db.insert(auditEvents).values({
     action: 'payment.captured',

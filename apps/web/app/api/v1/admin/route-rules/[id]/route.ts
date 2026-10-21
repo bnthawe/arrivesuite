@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -11,7 +12,12 @@ const patchSchema = z.object({
   note: z.string().max(500).nullable().optional(),
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:PATCH:/api/v1/admin/route-rules/[id]', identity: id }, () => handlePatch(request, ctx));
+}
+
+async function handlePatch(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireAdmin(request);
   if ('response' in gate) return gate.response;
   const { id } = await params;
@@ -47,7 +53,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({ rule });
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:DELETE:/api/v1/admin/route-rules/[id]', identity: id }, () => handleDelete(request, ctx));
+}
+
+async function handleDelete(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireAdmin(request);
   if ('response' in gate) return gate.response;
   const { id } = await params;

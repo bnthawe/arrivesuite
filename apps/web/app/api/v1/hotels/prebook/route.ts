@@ -1,9 +1,14 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { prebookRequestSchema } from '@arrivesuite/types';
 import { prebookRate } from '@arrivesuite/integrations';
 import { getCachedOffer, savePrebookHold } from '@/lib/prebooks';
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/hotels/prebook' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();

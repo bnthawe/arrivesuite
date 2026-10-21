@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -19,7 +20,12 @@ async function ownRoom(supplierId: string, roomId: string) {
   return room;
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ roomId: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ roomId: string }> }) {
+  const { roomId } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/rooms/[roomId]/availability', identity: roomId }, () => handlePost(request, ctx));
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ roomId: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { roomId } = await params;

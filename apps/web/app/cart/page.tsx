@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cartCheckoutKey, clearCartCheckoutKey } from '@/lib/idempotency-client';
 
 interface CartItem {
   kind: string;
@@ -90,7 +91,10 @@ export default function CartPage() {
     setNotice('');
     const res = await fetch(`/api/v1/cart/${cartId}/checkout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': cartCheckoutKey(cartId),
+      },
       body: JSON.stringify({
         guestInfo: { firstName, lastName, email, phone },
         payment: { transactionId },
@@ -98,6 +102,9 @@ export default function CartPage() {
       }),
     });
     const data = await res.json();
+    if (res.ok || (res.status < 500 && data.code !== 'idempotency_in_progress')) {
+      clearCartCheckoutKey(cartId);
+    }
     if (!res.ok) {
       setNotice(data.error ?? 'Checkout failed');
       return;

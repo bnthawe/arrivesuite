@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -22,7 +23,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ days: days.sort((a, b) => a.dayNumber - b.dayNumber) });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:POST:/api/v1/supplier/tours/[id]/itinerary', identity: id }, () => handlePost(request, ctx));
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { id } = await params;

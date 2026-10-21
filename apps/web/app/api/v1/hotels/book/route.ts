@@ -5,6 +5,7 @@ import { bookRate } from '@arrivesuite/integrations';
 import { consumePrebookHold, getCachedOffer } from '@/lib/prebooks';
 import { applyRouteMarkup } from '@/lib/route-pricing';
 import { createBooking, resolveGuestAccount, traceIdFromRequest } from '@/lib/bookings-core';
+import { withIdempotency } from '@/lib/idempotency';
 import { sendBookingConfirmation } from '@/lib/notifications';
 import { qrDataUrl, qrPngBuffer, verifyUrlFor } from '@/lib/qr';
 import { generateVoucherPdf, voucherPathFor } from '@/lib/vouchers';
@@ -21,6 +22,10 @@ const bookSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'hotels.book' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();

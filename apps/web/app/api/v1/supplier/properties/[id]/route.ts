@@ -1,3 +1,4 @@
+import { withIdempotency } from '@/lib/idempotency';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
@@ -10,7 +11,12 @@ const patchPropertySchema = z.object({
   status: z.enum(['draft', 'published', 'disabled']).optional(),
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'route:PATCH:/api/v1/supplier/properties/[id]', identity: id }, () => handlePatch(request, ctx));
+}
+
+async function handlePatch(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const gate = await requireSupplier(request);
   if ('response' in gate) return gate.response;
   const { id } = await params;

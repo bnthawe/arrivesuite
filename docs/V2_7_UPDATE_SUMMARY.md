@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level callback idempotency and a live Paystack sandbox run remain
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level idempotency is implemented and verified; a live Paystack sandbox run remains
 
 ---
 
@@ -96,7 +96,7 @@ pnpm --filter @arrivesuite/integrations typecheck
 
 The default tests mock `fetch` and run without credentials. Live sandbox cycles require DPO Pay test credentials and are opt-in via `DPO_LIVE_SANDBOX=1`.
 
-**Sandbox progress:** 5 of 5 payment cycles complete. Each 100 BWP Visa payment returned `Result 900` before payment and `Result 000` / `Transaction Paid` after. Duplicate `verifyToken` calls are stable. Partial refunds succeeded, and a third 50.00 refund on a 100.00 payment was rejected with `999`. **DPO does not enforce `refundRef` idempotency**, so ArriveSuite must prevent duplicate refunds and concurrent approvals. Full evidence is in `packages/integrations/src/dpo-pay/SANDBOX_RESULTS.md`.
+**Sandbox progress:** 5 of 5 payment cycles complete. Each 100 BWP Visa payment returned `Result 900` before payment and `Result 000` / `Transaction Paid` after. Duplicate `verifyToken` calls are stable. Partial refunds succeeded, and a third 50.00 refund on a 100.00 payment was rejected with `999`. **DPO does not enforce `refundRef` idempotency**, so ArriveSuite prevents duplicate refunds with a route key, a locked balance check, and an atomic approval claim. Duplicate and concurrent Paystack webhooks produced one capture and one payment row; booking duplicate delivery replayed the original response. Full evidence is in `packages/integrations/src/dpo-pay/SANDBOX_RESULTS.md` and `docs/T0_3_IDEMPOTENCY.md`.
 
 ---
 
@@ -106,7 +106,7 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 |---|---|---|---|
 | T0.1 — Secrets | 1 day | Yes | Move runtime secrets to `.env.local` |
 | T0.2 — Audit | 2 days | Yes | Middleware on POST/PUT/DELETE |
-| T0.3 — Idempotency | 1 day | Yes | Validate header and cache responses |
+| T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 29 route files covered |
 | T0.4 — State machine | 2 days | Yes | Implement §9.1 transitions in code |
 | T0.5 — Tests | 3 days | Yes | Critical-path tests plus CI gate |
 | T0.6 — DPO Pay sandbox | 2–3 days | Phase 1 gate | Can run in parallel with T0.1–T0.5 |

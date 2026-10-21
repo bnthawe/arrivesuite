@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { accounts, auditEvents, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
 import { createPaystackRefund, refundDpoToken, refundFlutterwaveTransaction, refundStripePayment } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { bookingRevenueLines, invertLines, postLedgerLines } from '@/lib/ledger';
+import { withIdempotency } from '@/lib/idempotency';
 
 const approveSchema = z.object({
   approvedBy: z.string().uuid(),
@@ -13,7 +14,14 @@ const approveSchema = z.object({
 
 // Approve executes the provider refund immediately: pending → approved →
 // completed/failed, with bookings.refundedCents updated on success.
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return withIdempotency(request, { scope: 'refunds.approve', identity: id }, () =>
+    handlePost(request, ctx),
+  );
+}
+
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
   let body: unknown;
@@ -53,10 +61,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Payment intent missing' }, { status: 409 });
   }
 
-  await db
+  // Atomically claim the pending refund. Concurrent approvals (even with
+  // different idempotency keys) cannot both reach the provider call.
+  const [claimed] = await db
     .update(refunds)
     .set({ state: 'approved', approvedBy: approver.id })
-    .where(eq(refunds.id, refund.id));
+    .where(and(eq(refunds.id, refund.id), eq(refunds.state, 'pending')))
+    .returning();
+  if (!claimed) {
+    return NextResponse.json({ error: 'Refund is already being processed' }, { status: 409 });
+  }
 
   try {
     if (intent.method === 'dpo') {

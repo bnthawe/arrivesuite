@@ -10,6 +10,7 @@ import {
   initializePaystackTransaction,
 } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
+import { withIdempotency } from '@/lib/idempotency';
 
 const initSchema = z.object({
   bookingRef: z.string().min(1).max(16),
@@ -21,6 +22,10 @@ const initSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  return withIdempotency(request, { scope: 'payments.init' }, () => handlePost(request));
+}
+
+async function handlePost(request: Request) {
   let body: unknown;
   try {
     body = await request.json();
