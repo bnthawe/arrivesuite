@@ -139,6 +139,20 @@ describe('verifyDpoToken', () => {
     });
   });
 
+  it('does not mark a 000 result as paid when the explanation says not paid', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      xmlResponse(
+        '<API3G><Result>000</Result><ResultExplanation>Transaction not paid yet</ResultExplanation><TransactionAmount>100.00</TransactionAmount><TransactionCurrency>BWP</TransactionCurrency></API3G>',
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await verifyDpoToken('tok-123', config);
+
+    expect(result.paid).toBe(false);
+    expect(result.resultExplanation).toBe('Transaction not paid yet');
+  });
+
   it('returns a sandbox verification without calling the gateway', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

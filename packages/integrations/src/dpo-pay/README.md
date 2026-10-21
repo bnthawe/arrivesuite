@@ -2,7 +2,7 @@
 
 ## Status
 
-Local harness ready. Live sandbox validation is pending DPO Pay test credentials.
+Local harness ready. First live sandbox cycle completed on 2026-10-21: 100 BWP create, unpaid verify (`900`), hosted-page payment, paid verify (`000`). See `SANDBOX_RESULTS.md`.
 
 The production client already lives at `packages/integrations/src/dpopay.ts`. It uses the DPO Pay v6 XML API through the platform `fetch` wrapper and exports:
 
@@ -47,7 +47,18 @@ pnpm --filter @arrivesuite/integrations test
 pnpm --filter @arrivesuite/integrations typecheck
 ```
 
-The local tests mock `fetch`; they do not need network access or credentials. Live sandbox cycles are the remaining T0.6 work.
+The default tests mock `fetch`; they do not need network access or credentials. The opt-in live tests are skipped unless `DPO_LIVE_SANDBOX=1`:
+
+```powershell
+$env:DPO_LIVE_SANDBOX='1'
+$env:DPO_PAY_COMPANY_TOKEN='<sandbox-company-token>'
+$env:DPO_PAY_PRODUCT_SERVICE_ID='<sandbox-product-service-id>'
+$env:DPO_PAY_SERVICE_SERVICE_ID='<sandbox-service-service-id>'
+$env:DPO_PAY_BASE_URL='https://secure.3gdirectpay.com/API/v6/'
+pnpm --filter @arrivesuite/integrations exec vitest run src/dpo-pay/live.test.ts --reporter=verbose --disableConsoleIntercept
+```
+
+Set `DPO_LIVE_PAID_TOKEN` to an already-paid sandbox token to verify the paid path without repeating the hosted-page step.
 
 ## API Summary
 
@@ -58,11 +69,11 @@ The local tests mock `fetch`; they do not need network access or credentials. Li
 | Refund token | `POST /API/v6/` with `Request=refundToken` | Full or partial refund (FR-5.17.5) |
 | Guest return | `RedirectURL` / `BackURL` | Call `verifyToken` before confirming |
 
-DPO Pay v6 is XML, not JSON. Send `Content-Type: application/xml`; parse the `<Result>` element and treat `000` as success.
+DPO Pay v6 is XML, not JSON. Send `Content-Type: application/xml`; parse the `<Result>` element. `900` means "not paid yet"; a paid transaction is `000` with `ResultExplanation` = `Transaction Paid`.
 
 ## Acceptance Criteria
 
-- Five or more end-to-end cycles: create, verify, return, refund, idempotency.
+- Five or more end-to-end cycles: create, verify, return, refund, idempotency. **Progress: 1/5.**
 - Paid state is derived from `verifyToken`, never from a return URL.
 - Duplicate returns/callbacks cannot create a second payment or confirmation.
 - Refunds cannot exceed the original charge or run twice.

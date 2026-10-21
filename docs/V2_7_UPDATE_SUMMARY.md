@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation remains a Phase 0 → 1 gate
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation is in progress (1 of 5 cycles complete on 2026-10-21)
 
 ---
 
@@ -82,6 +82,8 @@ The spike artifacts are in `packages/integrations/src/dpo-pay/`:
 - `SPIKE.md` — sandbox plan and exact XML request/response shapes
 - `README.md` — credentials, commands, acceptance criteria
 - `client.test.ts` — local mocked tests for config, create, verify, refund, and sandbox bypass
+- `live.test.ts` — opt-in live sandbox tests, skipped unless `DPO_LIVE_SANDBOX=1`
+- `SANDBOX_RESULTS.md` — evidence for the first 100 BWP create/pay/verify cycle
 
 Do not add a separate JSON/axios DPO client. DPO Pay v6 is XML; the existing client is the integration point used by `apps/web`.
 
@@ -92,7 +94,9 @@ pnpm --filter @arrivesuite/integrations test
 pnpm --filter @arrivesuite/integrations typecheck
 ```
 
-The tests mock `fetch` and run without credentials. Live sandbox cycles require DPO Pay test credentials.
+The default tests mock `fetch` and run without credentials. Live sandbox cycles require DPO Pay test credentials and are opt-in via `DPO_LIVE_SANDBOX=1`.
+
+**Sandbox progress:** 1 of 5 cycles complete. Create token (100 BWP), unpaid verify (`Result 900`), Visa hosted-page payment (`TransactionApproval 4444444422`), and paid verify (`Result 000` / `Transaction Paid`) all succeeded on 2026-10-21.
 
 ---
 

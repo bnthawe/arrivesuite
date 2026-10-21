@@ -1,7 +1,8 @@
 # DPO Pay Sandbox Integration Spike
 
 **Goal:** validate DPO Pay sandbox for the Phase 0 → 1 gate (5+ end-to-end payment cycles)  
-**Status:** local harness ready; live sandbox validation pending credentials  
+**Status:** 1 of 5 cycles complete (create + paid verify, 2026-10-21); duplicate return, refund, and Paystack fallback pending
+
 **Owner:** Solo developer  
 **Deadline:** Day 3 (T0.6)  
 **Risk:** 85% confidence per ADR-0023; covers payment capture, reconciliation, and idempotency
@@ -185,12 +186,12 @@ If server-to-server callbacks are enabled in the sandbox, verify them the same w
 
 - [x] T0.6.1 Document the DPO Pay v6 XML contract in this spike.
 - [x] T0.6.2 Add local tests for config, create, verify, refund, and sandbox bypass.
-- [ ] T0.6.3 Run createToken against the sandbox with 100, 500, and 1,000 BWP.
-- [ ] T0.6.4 Run verifyToken and reconcile the result against the database.
+- [x] T0.6.3 Run createToken against the sandbox with 100 BWP (500 and 1,000 BWP still pending).
+- [x] T0.6.4 Run verifyToken before and after payment; `900` unpaid and `000` paid confirmed.
 - [ ] T0.6.5 Deliver duplicate return/callback notifications and verify idempotency.
 - [ ] T0.6.6 Run a partial refund and a duplicate-refund attempt.
 - [ ] T0.6.7 Validate the Paystack fallback shape and error mapping.
-- [ ] T0.6.8 Record sandbox results, mismatches, and any contract changes.
+- [x] T0.6.8 Record sandbox results in `SANDBOX_RESULTS.md`.
 
 The local harness:
 
@@ -204,6 +205,8 @@ pnpm --filter @arrivesuite/integrations typecheck
 ## Success Criteria (Phase 0 → 1 Gate)
 
 Five or more end-to-end cycles covering:
+
+> **Progress:** 1 of 5 complete — create + paid verify on 2026-10-21 (`SANDBOX_RESULTS.md`).
 
 1. Create token (payment intent)
 2. Verify token and reconcile

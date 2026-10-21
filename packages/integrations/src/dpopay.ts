@@ -170,10 +170,17 @@ export async function verifyDpoToken(
     `<TransactionToken>${esc(transToken)}</TransactionToken></API3G>`;
   const resXml = await postXml(xml, cfg);
   const resultCode = tag(resXml, 'Result') ?? tag(resXml, 'Code') ?? '';
+  const resultExplanation = tag(resXml, 'ResultExplanation') ?? tag(resXml, 'Explanation') ?? '';
+  // DPO uses 900 for "not paid yet" and 000 for a completed payment, but do
+  // not treat a bare 000 as paid if the explanation says otherwise.
+  const paid =
+    resultCode === '000' &&
+    /paid/i.test(resultExplanation) &&
+    !/not\s+paid/i.test(resultExplanation);
   return {
-    paid: resultCode === '000',
+    paid,
     resultCode,
-    resultExplanation: tag(resXml, 'ResultExplanation') ?? tag(resXml, 'Explanation') ?? '',
+    resultExplanation,
     amountMajor: tag(resXml, 'TransactionAmount') ?? undefined,
     currency: tag(resXml, 'TransactionCurrency') ?? undefined,
     approval: tag(resXml, 'TransactionApproval') ?? undefined,
