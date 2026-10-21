@@ -6,8 +6,15 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
-  "dependencies": { "@arrivesuite/types": "workspace:*" },
-  "devDependencies": { "@types/node": "^20.11.0", "typescript": "^5.4.0" }
+  "dependencies": {
+    "@arrivesuite/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^5.0.5"
+  }
 }

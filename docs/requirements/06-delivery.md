@@ -44,11 +44,11 @@
 
 ## 17.4 Phase 1 — Sourced Flights + B2C (Weeks 2–3)
 
-**Deliverables:** Duffel adapter (search, offer, order, cancel); pricing engine v1 (server-side signed quotes); B2C search → detail → checkout → confirmation; PayTabs payment (intent, capture, refund); WhatsApp template set live (confirmations, voucher, payment states); FX rates from Bank of Botswana hourly; R2 media/voucher storage; basic admin console (bookings list, booking detail, kill switch); ticketing workflow (§5.19); cancellation engine baseline (§5.20).
+**Deliverables:** Duffel adapter (search, offer, order, cancel); pricing engine v1 (server-side signed quotes); B2C search → detail → checkout → confirmation; DPO Pay payment (intent, capture, refund) with Paystack fallback; WhatsApp template set live (confirmations, voucher, payment states); FX rates from Bank of Botswana hourly; R2 media/voucher storage; basic admin console (bookings list, booking detail, kill switch); ticketing workflow (§5.19); cancellation engine baseline (§5.20).
 
 **Not included:** owned inventory onboarding, tours, cars, B2B, corporate, hotels (Amadeus moves to the same phase-slot as Duffel **only if** §19.1 coverage validates; otherwise it is a Phase 1–2 dependency and owned hotels carry Phase 2 instead).
 
-**Acceptance:** a real guest searches, books, pays via PayTabs, and receives a WhatsApp confirmation + PDF voucher. Revenue from this phase funds the moat.
+**Acceptance:** a real guest searches, books, pays via DPO Pay, and receives a WhatsApp confirmation + PDF voucher. Revenue from this phase funds the moat.
 
 ## 17.5 Phase 2 — Extranet + Owned Inventory + WhatsApp Supplier Ops (Weeks 4–5)
 
@@ -58,7 +58,7 @@
 
 ## 17.6 Phase 3 — WhatsApp Guest Booking + Owned Tours (Weeks 6–7)
 
-**Deliverables:** WhatsApp guest guided flow L3, domestic-first (§5.3.5); supplier WhatsApp ops extended to departures and availability (§5.4.4); owned tours with departures and pax tiers; WhatsApp booking analytics; admin shows WhatsApp threads in booking detail; PayTabs payment links for WhatsApp checkout (Phase 3 gate per §5.3.8); natural-language parsing **not** in this phase — LLM parsing is Phase 3+ only after the evaluation harness (§5.3.6) exists.
+**Deliverables:** WhatsApp guest guided flow L3, domestic-first (§5.3.5); supplier WhatsApp ops extended to departures and availability (§5.4.4); owned tours with departures and pax tiers; WhatsApp booking analytics; admin shows WhatsApp threads in booking detail; DPO Pay payment links for WhatsApp checkout (Phase 3 gate per §5.3.8); natural-language parsing **not** in this phase — LLM parsing is Phase 3+ only after the evaluation harness (§5.3.6) exists.
 
 **Acceptance:** a guest completes a booking via WhatsApp menu flow end-to-end for owned inventory; supplier confirms via WhatsApp; guided flow is resumable in WhatsApp and on the web.
 
@@ -71,7 +71,7 @@
 | Gate | Criterion |
 |---|---|
 | Phase 0 → 1 | CI green; hello-world booking works; worker processing jobs |
-| Phase 1 → 2 | Real guest books a flight end-to-end; PayTabs capture + refund verified |
+| Phase 1 → 2 | Real guest books a flight end-to-end; DPO Pay capture + refund verified |
 | Phase 2 → 3 | 10–20 suppliers live; WhatsApp supplier confirmation loop works; owned share metric live |
 | Phase 3 → 4 | WhatsApp booking flow works end-to-end for owned inventory |
 | Phase 4 complete | Load test passes; runbooks published; ops team can run the business |
@@ -94,7 +94,7 @@ Solo developer with contractor support for design, content production in Botswan
 | Content production (20 suppliers) | 30,000 |
 | Field operations | 40,000 |
 | Infrastructure (Vercel, Neon, R2, Upstash, worker host) | 6,000 |
-| API access (Duffel, Amadeus, PayTabs) | 15,000 |
+| API access (Duffel, Amadeus, DPO Pay, Paystack) | 15,000 |
 | WhatsApp Business API + BSP evaluation buffer | 4,000 |
 | Legal (BTO, contracts) | 25,000 |
 | Accounting / BURS | 10,000 |
@@ -102,7 +102,7 @@ Solo developer with contractor support for design, content production in Botswan
 
 ## 17.12 Acceptance for the 10-Week Plan
 
-Working product with sourced flights + owned hotels/tours; PayTabs live; WhatsApp guest booking and supplier ops live; 10–20 Botswana suppliers onboarded; real revenue; admin console operational; load test passing; runbooks published; production cutover. B2B portal, Exchange API, corporate, Viator: **not** in the 10-week plan.
+Working product with sourced flights + owned hotels/tours; DPO Pay live with Paystack fallback; WhatsApp guest booking and supplier ops live; 10–20 Botswana suppliers onboarded; real revenue; admin console operational; load test passing; runbooks published; production cutover. B2B portal, Exchange API, corporate, Viator: **not** in the 10-week plan.
 
 ---
 
@@ -110,7 +110,7 @@ Working product with sourced flights + owned hotels/tours; PayTabs live; WhatsAp
 
 ## 18.1 In MVP (10 weeks)
 
-Sourced hotels (LiteAPI) and flights (OnArrival); Paystack primary with DPO Pay, Flutterwave and Stripe fallback; WhatsApp Cloud API direct; owned hotel and tour inventory via the extranet; MICE venues/RFQ skeleton; WhatsApp supplier ops and guest guided booking; content production tools; pricing engine with signed quotes and hybrid route markup; immutable snapshots; audit log; idempotency; multi-currency; English + Setswana; BTO verification (manual); VAT/WHT; trust signals; owned-share-of-GMV metric; explicit booking state machine.
+Sourced hotels (LiteAPI) and flights (OnArrival); DPO Pay primary with Paystack fallback (**v2.7 update:** PayTabs replaced with DPO Pay, 85% confidence pending sandbox validation); WhatsApp Cloud API direct; owned hotel and tour inventory via the extranet; MICE venues/RFQ skeleton; WhatsApp supplier ops and guest guided booking; content production tools; pricing engine with signed quotes and hybrid route markup; immutable snapshots; audit log; idempotency; multi-currency; English + Setswana; BTO verification (manual); VAT/WHT; trust signals; owned-share-of-GMV metric; explicit booking state machine; pay-at-property bookings with walk-in settlement and commission debt tracking (**v2.7 new**); manual escalation for persistent supplier debt.
 
 ## 18.2 Permanently Out
 
@@ -119,6 +119,7 @@ Sourced hotels (LiteAPI) and flights (OnArrival); Paystack primary with DPO Pay,
 - Metasearch; Booking.com-on-their-terms; blockchain-native anything; crypto.
 - **The generic workflow engine** (`workflow_definitions` etc.) — replaced by §9 explicitly (§17.3, §6.4).
 - **Car rental, transfers and visa in the extranet** — car rental is cut from the locked verticals, transfers was never one, and visa is excluded; none gets supplier-side surfaces (D21). The extranet covers local inventory only: stays, tours, places/destinations, events, MICE.
+- **Auto card pull on persistent supplier debt** (v2.7 new). Manual escalation only — Finance Ops decides action on debt exceeding −BWP 10,000 (FR-5.5.9A.6).
 
 ## 18.3 Deferred, Not Out
 
@@ -148,7 +149,7 @@ B2B portal, corporate clients, Exchange API / XML-out, Viator tours, second sour
 
 ## 19.3 Payments — EU Cards and 3-D Secure
 
-**Risk:** Persona P3 (international traveller) pays in USD/EUR. PayTabs' handling of EU-issued cards and its 3-D Secure step-up path (PSD2 SCA) is unvalidated. A failed 3-D Secure on the WhatsApp in-app browser is the highest-friction failure in the funnel.
+**Risk:** Persona P3 (international traveller) pays in USD/EUR. DPO Pay's handling of EU-issued cards and its 3-D Secure step-up path (PSD2 SCA) is unvalidated. A failed 3-D Secure on the WhatsApp in-app browser is the highest-friction failure in the funnel.
 
 **Mitigation:** web is the only launch surface for 3-D Secure flows (§5.3.8); WhatsApp payment links are Phase 3 and gated on the device-matrix check §19.3.1; a card-auth failure above 5% on EU cards triggers a provider review.
 
@@ -166,7 +167,7 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 
 > **v3.0 correction.** v2.4's P&L lines for Year-1 GMV (BWP 20M), 2,500 bookings/month, and 300 suppliers × 8 bookings/month do not reconcile — the implied average booking value differs by ~34× from the document's own worked example (BWP 14,375). The GMV/revenue targets are withdrawn until a bottom-up model exists.
 
-**Required to unblock:** a bottom-up model with (a) bookings/month by source, (b) average booking value by product, (c) commission rate by class, (d) PayTabs fees, (e) messaging and refund costs, (f) owned-share trajectory from §1.8. Until §19.5 is populated, **no GMV or revenue target is published**.
+**Required to unblock:** a bottom-up model with (a) bookings/month by source, (b) average booking value by product, (c) commission rate by class, (d) DPO Pay and Paystack fees, (e) messaging and refund costs, (f) owned-share trajectory from §1.8. Until §19.5 is populated, **no GMV or revenue target is published**.
 
 ## 19.6 Human-in-the-Loop Dependencies
 
@@ -216,6 +217,7 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 | D20 | §5.16.14 RBAC matrix authored | FR-16.53 referenced a matrix that was never written |
 | D21 | MICE venues/RFQ enter MVP scope (§5.25, §6.18); car rental, transfers and visa stay out of the extranet (local inventory only: stays, tours, places/destinations, events, MICE) | Corporate demand funds the moat; the three excluded types were cut or never listed — reopening any breaks the rebaseline |
 | D22 | Providers pivoted per contract v1.0 (LiteAPI, OnArrival, Paystack + DPO/Flutterwave/Stripe) over v2.4's Duffel/Amadeus/PayTabs | §18.1 now records the shipped set; Amadeus-conditional language retired |
+| D23 | **DPO Pay primary (v2.7), Paystack fallback; auto card pull removed; commission debt cap at −BWP 10,000; manual escalation only** | Lower fees than PayTabs; better Botswana/SADC support; pay-at-property needs walk-in commission tracking; auto-debit contradicted the merchant-of-record model |
 
 ---
 
@@ -252,6 +254,7 @@ Verify return-URL handling and 3-D Secure step-up in the WhatsApp in-app browser
 | §2.8 WhatsApp commerce | Authored in `05-whatsapp.md` |
 | §5.17–§5.24, §9.1, §9.2, §15, §19, §20, §21, §22, §13 | New sections authored |
 | §5.25, §6.18, §15.10 | Authored post-v3.0 for the supplier extranet detail (hybrid-markup review) |
+| §5.5.9A | Authored in v2.7: pay-at-property, commission debt, manual escalation |
 | §14 Observability | Folded into §4.10, §15.2 and §5.x per-section observability FRs |
 
 **Reading order for a new engineer:** `00-index.md` → `01-strategy.md` → `02-architecture.md` → `03-requirements.md` → `04-data-model.md` → `05-whatsapp.md` → `06-delivery.md`. Start with the section you are building; the cross-reference table in `00-index.md` tells you where the FRs for that area live.

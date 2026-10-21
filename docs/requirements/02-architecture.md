@@ -22,7 +22,7 @@ ArriveSuite's architecture is built on seven principles:
 
 **Demand side:** B2C web, B2B portal (post-MVP), supplier extranet — all accessed directly or via WhatsApp, which is the primary operator interface from Phase 2 (§2.5.1).
 
-**Platform engine:** Search (PostGIS + FTS), Pricing Engine (signed quotes), Booking Workflows (explicit state machines, §9.1), Payments (PayTabs), CRM, Support (threads, WhatsApp, email), Job Runner (BullMQ), Ledger (double-entry), Audit (immutable).
+**Platform engine:** Search (PostGIS + FTS), Pricing Engine (signed quotes), Booking Workflows (explicit state machines, §9.1), Payments (DPO Pay primary, Paystack fallback), CRM, Support (threads, WhatsApp, email), Job Runner (BullMQ), Ledger (double-entry), Audit (immutable).
 
 **Supply side:**
 
@@ -44,9 +44,9 @@ Guest searches on web
   → Guest enters details
   → Booking created (draft → pending_payment)
   → Workflow instance started (§9.1)
-  → Payment intent created (PayTabs)
-  → Guest redirected to PayTabs
-  → PayTabs webhook → Payment captured
+  → Payment intent created (DPO Pay primary, Paystack fallback)
+  → Guest redirected to the provider-hosted page
+  → Return/callback verifies the token → Payment captured
   → Workflow → ticketing (flights) / instant confirm (hotels)
   → Duffel order created (§5.19)
   → Workflow → ticketed
@@ -106,7 +106,7 @@ Supplier sends WhatsApp message
 | WhatsApp | Meta Cloud API (direct) | Primary messaging channel |
 | Email | Resend | Transactional email |
 | SMS | Local BW provider | Fallback notifications, P1 alerts |
-| Payments | PayTabs | Cards + mobile money |
+| Payments | DPO Pay (primary); Paystack (fallback) | Cards + mobile money |
 | FX | Bank of Botswana | BWP exchange rates |
 | Ledger | Postgres (double-entry) | Financial records |
 | Audit | Postgres (immutable, partitioned) | Compliance, debugging |
@@ -157,10 +157,10 @@ When a guest searches for stays in Maun:
 
 v2.4 never mentioned PCI DSS or the cardholder data environment. v3.0's position:
 
-- **ArriveSuite never stores, processes or transmits raw PAN, CVV or track data.** All card entry and tokenisation happens inside the PayTabs-hosted page.
+- **ArriveSuite never stores, processes or transmits raw PAN, CVV or track data.** All card entry and tokenisation happens inside the provider-hosted page (DPO Pay or Paystack).
 - Cardholder data therefore never enters ArriveSuite systems, and ArveSuite's PCI DSS scope is SAQ-A.
 - No card numbers, CVVs, or track data in `booking_guests`, `payments`, `integration_payloads` or logs. Redaction is enforced at the adapter boundary (§12.7).
-- **Unresolved:** whether PayTabs provides a compliant 3-D Secure path for EU-issued cards, and what foreign-card acceptance rates look like in practice. Persona P3 pays in USD and EUR, which makes this a launch risk, not a Phase 4 concern. See §19.3.
+- **Unresolved:** whether DPO Pay provides a compliant 3-D Secure path for EU-issued cards, and what foreign-card acceptance rates look like in practice. Persona P3 pays in USD and EUR, which makes this a launch risk, not a Phase 4 concern. See §19.3.
 
 ## 4.9 Reliability Architecture
 
@@ -236,7 +236,8 @@ Business Logic
 | ADR-0003 | Drizzle ORM |
 | ADR-0004 | Better-Auth multi-realm |
 | ADR-0005 | Hybrid schema (canonical envelope + domain tables) |
-| ADR-0006 | PayTabs first payment provider |
+| ADR-0006 | PayTabs first payment provider (superseded for launch by ADR-0023) |
+| ADR-0023 | DPO Pay primary; Paystack fallback |
 | ADR-0007 | Duffel first flight provider |
 | ADR-0008 | BWP base currency + display-currency toggle |
 | ADR-0009 | Cloud-first development (Neon + Upstash) |

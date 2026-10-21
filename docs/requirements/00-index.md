@@ -1,8 +1,8 @@
-# ArriveSuite Requirements — v3.0 Index
+# ArriveSuite Requirements — v2.7 Index
 
-**Version:** 3.0 · **Status:** Authoritative · **Owner:** ArriveSuite founding team · **Supersedes:** v2.4 (archived at `archive/v2.4/`)
+**Version:** 2.7 · **Status:** Authoritative · **Owner:** ArriveSuite founding team · **Previous:** v3.0 (foundation); **Changes:** ADR-0023 DPO Pay primary, pay-at-property settlement, commission debt, manual escalation
 
-v3.0 consolidates the v2.4 requirements corpus into one coherent document, resolves its contradictions, cuts scope that was not fundable, and adds the sections v2.4 referenced but never wrote. It does **not** change the section numbering scheme — every `§` from v2.4 survives — it changes what the sections say.
+v2.7 updates v3.0 with a provider pivot (DPO Pay replaces PayTabs as primary) and introduces pay-at-property / walk-in settlement via commission debt tracking. The timeline extends by ~8 days in Phase 4, offset by deferring tours from Phase 3.
 
 ---
 

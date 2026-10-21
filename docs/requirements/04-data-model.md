@@ -472,28 +472,28 @@ interface WhatsAppProvider { /* sendMessage, sendInteractive, sendMedia, webhook
 |---|---|---|
 | Sourced inventory | Global inventory for revenue and gap-fill | Duffel, Amadeus |
 | Owned inventory | Local Botswana suppliers | Extranet (internal API) |
-| Payments | Collect money | PayTabs |
+| Payments | Collect money | DPO Pay (primary), Paystack (fallback) |
 | Notifications | Transactional messaging | WhatsApp Cloud API, Resend, SMS (Phase 3) |
 | FX | Currency rates | Bank of Botswana, OpenExchangeRates |
 | Storage | Object storage | Cloudflare R2 |
 
 ## 12.3 MVP Integrations (Phase 1–2)
 
-Duffel (flights, Phase 1); Amadeus (hotels, Phase 1 — **coverage gated, §19.1**); PayTabs (payments, Phase 1); WhatsApp Cloud API direct (Phase 1, ADR-0019); Bank of Botswana (FX, Phase 1); Cloudflare R2 (Phase 1).
+Duffel (flights, Phase 1); Amadeus (hotels, Phase 1 — **coverage gated, §19.1**); DPO Pay (payments, Phase 1, ADR-0023); Paystack (card fallback, Phase 1); WhatsApp Cloud API direct (Phase 1, ADR-0019); Bank of Botswana (FX, Phase 1); Cloudflare R2 (Phase 1).
 
 ## 12.4 Phase 3 Integrations
 
-Resend (email); local BW SMS provider; mobile money via PayTabs if confirmed; Orange Money / MyZaka (gated).
+Resend (email); local BW SMS provider; mobile money via DPO Pay or Paystack if confirmed; Orange Money / MyZaka (gated).
 
 ## 12.5 Phase 4+ Integrations
 
-Viator/GetYourGuide tours (post-MVP, §19.1); Rentalcars (post-MVP); Flutterwave (mobile money fallback); DPO Pay; AXA/VisitorsCoverage insurance; Hotelbeds/Travelport/Sabre (second providers — one of the two-sourced-provider commitments is now Phase 4+, §17.3); OTA contracts.
+Viator/GetYourGuide tours (post-MVP, §19.1); Rentalcars (post-MVP); Flutterwave (mobile money fallback); AXA/VisitorsCoverage insurance; Hotelbeds/Travelport/Sabre (second providers — one of the two-sourced-provider commitments is now Phase 4+, §17.3); OTA contracts.
 
 ## 12.6 Decommissioned From v2.4
 
 - **Viator Phase 3** — moved to Phase 4+ (post-MVP).
 - **"Twilio or 360dialog — WhatsApp fallback (Phase 4)"** — removed; BSP evaluation is at Phase 3 review (ADR-0018/0019), not a scheduled integration.
-- **Stripe** — removed from the launch path; PayTabs remains the single card provider until a Phase 4+ SADC evaluation.
+- **Stripe and PayTabs** — removed from the launch path. DPO Pay is the primary card provider with Paystack as fallback (ADR-0023); any further provider change needs its own decision record.
 
 ## 12.7 Cross-Cutting Patterns
 
@@ -517,7 +517,7 @@ Coverage (high), reliability (high), pricing (high), API quality (medium), suppo
 
 ## 12.10 Launch Sequence
 
-1. Duffel sandbox → 2. PayTabs sandbox → 3. WhatsApp test numbers → 4. Bank of Botswana FX → 5. R2 → 6. Duffel production → 7. PayTabs production → 8. Amadeus sandbox (**gate: coverage validation, §19.1**) → 9. Amadeus production → 10. WhatsApp production.
+1. Duffel sandbox → 2. DPO Pay sandbox → 3. Paystack sandbox → 4. WhatsApp test numbers → 5. Bank of Botswana FX → 6. R2 → 7. Duffel production → 8. DPO Pay production → 9. Paystack production → 10. Amadeus sandbox (**gate: coverage validation, §19.1**) → 11. Amadeus production → 12. WhatsApp production.
 
 **Rule:** no production launch until the sandbox has validated 100+ successful calls and 10+ end-to-end bookings — **except** Amadeus, which also requires the §19.1 coverage validation against Maun and Kasane.
 
@@ -527,4 +527,4 @@ Every integration is registered in `integration_providers` + `integration_contra
 
 ## 12.12 Acceptance Criteria
 
-Phase 1 complete when: Duffel, Amadeus, PayTabs, WhatsApp, FX, and R2 all implement their adapter interfaces in production; every integration has idempotency, webhook verification, circuit breaker, retry, reconciliation; payloads logged; registered in the contract registry; Admin Console manages them.
+Phase 1 complete when: Duffel, Amadeus, DPO Pay, Paystack, WhatsApp, FX, and R2 all implement their adapter interfaces in production; every integration has idempotency, webhook verification, circuit breaker, retry, reconciliation; payloads logged; registered in the contract registry; Admin Console manages them.

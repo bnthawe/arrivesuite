@@ -232,7 +232,7 @@ A menu-driven flow. Every step is a numbered option list, so it works on a featu
 6. Choose             → numbered selection
 7. Confirm            → full summary + total; reply YES to proceed
 8. Details            → name, email (link or template-driven collection)
-9. Pay                → PayTabs link (single-use, 15-minute TTL)
+9. Pay                → DPO Pay link (single-use, 15-minute TTL; Paystack fallback)
 10. Confirmed          → reference, voucher link, WhatsApp notification, optional web itinerary
 ```
 
@@ -290,13 +290,13 @@ WhatsApp's renderer is not a document the platform controls. v2.4 promised WCAG 
 
 ## 5.3.8 Payment over WhatsApp (Phase 3, Gated)
 
-**FR-5.3.29 — PayTabs link only.** The system issues a single-use PayTabs payment link. ArriveSuite never handles card data in any channel (§4.8.1).
+**FR-5.3.29 — DPO Pay link only.** The system issues a single-use DPO Pay payment link, with Paystack as fallback. ArriveSuite never handles card data in any channel (§4.8.1).
 
 **FR-5.3.30 — Link properties.** Single-use; 15-minute TTL; amount fixed server-side and not editable by the recipient; HMAC-signed; bound to the quote and the verified principal.
 
 **FR-5.3.31 — Failure handling.** Three consecutive failures on the same booking raises a P2 alert and offers a web payment route plus a support ticket. Repeated failure is a signal, not a retry loop.
 
-**FR-5.3.32 — Mobile money.** Orange Money / MyZaka payment links are Phase 3 and gated on PayTabs confirming operator support. Not assumed.
+**FR-5.3.32 — Mobile money.** Orange Money / MyZaka payment links are Phase 3 and gated on DPO Pay or Paystack confirming operator support. Not assumed.
 
 **FR-5.3.33 — Gate.** This section does not ship until the device-matrix verification in §19.3 passes: WhatsApp in-app browser return-URL handling and 3-D Secure step-up verified on current Android and iOS, on both the guest and supplier numbers. This is why L4 is Phase 3 and not Phase 2.
 

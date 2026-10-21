@@ -132,6 +132,24 @@ The supplier onboarding funnel has 6 stages:
 
 **FR-5.5.38 — Content updates.** Audit-logged; re-reviewed if significant; published immediately for minor changes.
 
+## 5.5.9A Pay-at-Property Settlement (NEW in v2.7)
+
+> **v2.7 addition.** Walk-in and cash bookings introduce a second payment flow separate from online card payments.
+
+**FR-5.5.9A.1 — Pay-at-property model.** Walk-in/cash bookings are recorded in the same booking envelope as online bookings but with `payment_method = 'cash'` or `'eft'`. No charge is captured at booking time.
+
+**FR-5.5.9A.2 — Auto-completion on checkout.** 24 hours after checkout (`check_out_date + 1 day`), the booking auto-completes to `fulfilled` and commission is recorded as earned. The supplier can dispute or report no-show within 48 hours post-check-in; if so, commission posting pauses pending review.
+
+**FR-5.5.9A.3 — Commission debt tracking.** A monthly `commission_debt` table tracks per supplier: `period_month`, `online_collected_cents`, `walk_in_commission_debt_cents`, `balance_cents` (online collected − walk-in debt). A persistent negative balance is manually escalated, not auto-enforced. Finance Ops receives an alert when balance falls below −BWP 10,000 (a hard cap).
+
+**FR-5.5.9A.4 — Monthly settlement anchor.** At month-end, the platform offsets online collections against walk-in debt: if the supplier collected BWP 50,000 online and owes BWP 15,000 in walk-in commission, the net payout is BWP 35,000. Both sides are audit-logged.
+
+**FR-5.5.9A.5 — No-show and dispute handling.** Suppliers report no-show or guest dispute within 48h post-check-in; a ticket is created; Finance Ops decides whether to waive commission. The decision is recorded on the `commission_debt` row with the timestamp and actor.
+
+**FR-5.5.9A.6 — Debt cap.** A supplier's negative balance cannot exceed −BWP 10,000. Once the cap is breached, Finance Ops is manually notified (P2 alert); no further walk-in bookings are accepted until the balance is brought above the cap by online collections or manual adjustment.
+
+**FR-5.5.9A.7 — MoR stays ArriveSuite.** Walk-in bookings are still considered owned inventory under ArriveSuite's merchant-of-record model. Guests see the booking in their confirmation and WhatsApp thread. No supplier-branded receipt is issued (only the booking reference).
+
 ## 5.5.10 Payouts & Finance
 
 **FR-5.5.39 — Payout schedule.** Default weekly, Monday for the prior week's completed bookings. Options: weekly, bi-weekly, monthly, on-demand (fee applies).
@@ -859,7 +877,7 @@ This section defines the B2C guest-facing booking experience — search to confi
 
 **FR-5.15.31 — Guest count validation.** Against capacity, rate plan rules, airline/hotel rules; specific error messages.
 
-**FR-5.15.32 — Payment method selection.** Card (PayTabs), mobile money (Phase 2), bank transfer, wallet, pay later.
+**FR-5.15.32 — Payment method selection.** Card (DPO Pay primary, Paystack secondary fallback), mobile money (Phase 2), bank transfer, wallet, pay later. **v2.7 update:** DPO Pay replaces PayTabs as primary provider; 85% confidence, subject to sandbox validation.
 
 **FR-5.15.33 — Payment confirmation.** Explicit total acceptance, terms acceptance, OTP/2FA where required.
 
@@ -1259,15 +1277,15 @@ Mobile admin console, native desktop apps, custom dashboard layouts, advanced BI
 
 # §5.17 Payments & Settlement
 
-> **New in v3.0.** v2.4 had the payment tables and the PayTabs adapter name but no requirements for what the platform does with money.
+> **New in v3.0.** v2.4 had the payment tables and the PayTabs adapter name but no requirements for what the platform does with money. **v2.7 update:** Primary provider pivoted to DPO Pay (ADR-0023).
 
 **FR-5.17.1 — Payment intent.** A booking creates exactly one `payment_intents` row per attempt. The intent carries booking_ref, amount, currency, method, provider, state (`requires_payment` | `processing` | `succeeded` | `failed` | `requires_action`), and expiry.
 
-**FR-5.17.2 — Capture model.** PayTabs is the first provider (ADR-0006). Owned-inventory payments settle to ArriveSuite's PayTabs merchant account; sourced-inventory payments are processed agent-model (§1.1) and settled net of the provider charge.
+**FR-5.17.2 — Capture model.** DPO Pay is the primary provider (ADR-0023, 85% confidence pending sandbox validation). Paystack is the secondary fallback. Owned-inventory payments settle to ArriveSuite's merchant account; sourced-inventory payments are processed agent-model (§1.1) and settled net of the provider charge.
 
-**FR-5.17.3 — 3-D Secure posture.** Card auth must support 3-D Secure step-up where the issuer requires it. **Unresolved launch risk** (§19.3): PayTabs' 3-D Secure coverage for EU-issued cards making the P3 persona is not validated. The web payment path (not WhatsApp in-app browser) is the only launch surface for a 3-D Secure challenge.
+**FR-5.17.3 — 3-D Secure posture.** Card auth must support 3-D Secure step-up where the issuer requires it. **Unresolved launch risk** (§19.3): DPO Pay's 3-D Secure coverage for EU-issued cards making the P3 persona is not validated. The web payment path (not WhatsApp in-app browser) is the only launch surface for a 3-D Secure challenge.
 
-**FR-5.17.4 — PCI posture.** ArriveSuite never stores, processes, or transmits raw card data. Entry happens on the PayTabs-hosted page. ArriveSuite's scope is SAQ-A (§4.8.1). No card numbers, CVVs, or track data in any business table, `integration_payloads`, or logs.
+**FR-5.17.4 — PCI posture.** ArriveSuite never stores, processes, or transmits raw card data. Entry happens on the provider-hosted page (DPO Pay or Paystack). ArriveSuite's scope is SAQ-A (§4.8.1). No card numbers, CVVs, or track data in any business table, `integration_payloads`, or logs.
 
 **FR-5.17.5 — Refunds.** Every refund is initiated through the refund policy engine (§5.20). A refund cannot be issued for more than the original charge, cannot be issued twice, and requires two-person approval above the FR-5.16.14 threshold.
 
@@ -1364,9 +1382,9 @@ Mobile admin console, native desktop apps, custom dashboard layouts, advanced BI
 
 > **New in v3.0.** v2.4 had a dispute ticket screen but no financial model for a chargeback.
 
-**FR-5.22.1 — Chargeback intake.** PayTabs notifies ArriveSuite of a disputed charge. The dispute becomes a ticket with the charge, the guest, the booking, the evidence available, and the deadline.
+**FR-5.22.1 — Chargeback intake.** The payment provider (DPO Pay or Paystack) notifies ArriveSuite of a disputed charge. The dispute becomes a ticket with the charge, the guest, the booking, the evidence available, and the deadline.
 
-**FR-5.22.2 — Evidence pack.** For each dispute, the system assembles: booking details, voucher, proof of fulfilment, communication log, and the guest's IP/device records. The pack is exported for manual submission to PayTabs.
+**FR-5.22.2 — Evidence pack.** For each dispute, the system assembles: booking details, voucher, proof of fulfilment, communication log, and the guest's IP/device records. The pack is exported for manual submission to the provider.
 
 **FR-5.22.3 — Float management.** Expected chargeback liability is modelled as a percentage of GMV (starting assumption 0.5%, §19.5). Funds are held back from payouts proportionally until the chargeback clears or is lost.
 

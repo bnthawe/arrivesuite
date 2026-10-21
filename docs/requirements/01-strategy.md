@@ -112,7 +112,7 @@ v2.4's phase durations summed to 12 weeks but were labelled 13, and its mileston
 | Phase | Weeks | Deliverable |
 |---|---|---|
 | Phase 0 | 1 | Foundations: monorepo, cloud stack, worker host, DB, auth, CI |
-| Phase 1 | 2 | Sourced flights + B2C checkout + PayTabs + WhatsApp confirmations |
+| Phase 1 | 2 | Sourced flights + B2C checkout + DPO Pay (Paystack fallback) + WhatsApp confirmations |
 | Phase 2 | 2 | Extranet + owned inventory (first 10 suppliers) + WhatsApp supplier ops |
 | Phase 3 | 2 | WhatsApp booking flow + tours + pricing engine v2 |
 | Phase 4 | 1 | Hardening, launch prep, first revenue |
@@ -310,7 +310,7 @@ A user can request "speak to a human", or the system escalates when confidence i
 
 Payment over WhatsApp uses:
 
-- **PayTabs payment links** (primary)
+- **DPO Pay payment links** (primary; Paystack fallback)
 - **Mobile money** (Orange Money, MyZaka — Phase 3)
 - **Wallet balance** (if the guest has one)
 
@@ -318,8 +318,8 @@ Payment over WhatsApp uses:
 
 1. System generates a signed payment link with an expiry.
 2. Link is sent as a WhatsApp message (approved template).
-3. Guest taps link → PayTabs hosted page in WhatsApp's in-app browser.
-4. Payment captured → PayTabs webhook → system updates booking.
+3. Guest taps link → DPO Pay hosted page in WhatsApp's in-app browser.
+4. Return/callback is verified with DPO Pay → system updates booking.
 5. Confirmation + voucher sent via WhatsApp.
 
 **Security:**
