@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { currencyCodeSchema } from './money';
 
-// Paystack is the primary provider; Flutterwave and Stripe sit behind the
-// same interface as fallbacks (contract v1.0 §5).
+// DPO Pay is the primary provider; Paystack is the fallback, with Flutterwave
+// and Stripe behind the same interface (contract v2.7 §5.17).
 export const paymentInitRequestSchema = z.object({
   email: z.string().email().max(255),
   amountMinor: z.number().int().min(1),

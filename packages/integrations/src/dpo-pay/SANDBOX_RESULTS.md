@@ -94,7 +94,7 @@ The existing refund routes already calculate the remaining balance from `refunds
 - [ ] Full duplicate return/callback test through the app and database (T0.3 dependency).
 - [x] Partial refund and over-refund rejection.
 - [x] Duplicate-refund behaviour documented; app-level idempotency required.
-- [ ] Paystack fallback shape and error mapping (needs Paystack credentials).
+- [x] Paystack fallback shape and error mapping covered by mocked tests (`paystack.test.ts`, `http.test.ts`). A live Paystack sandbox run still needs credentials.
 - [ ] EU-issued card / 3-D Secure behaviour, if DPO can provide a test card.
 
 ## Reproduce

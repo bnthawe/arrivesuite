@@ -13,7 +13,7 @@ export function paystackConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Pay
   return { secretKey: key, sandbox: mode ? mode !== 'live' : !key || key.includes('xxx') };
 }
 
-// Primary provider (contract v1.0 §5). Test card 4084084084084081.
+// Fallback provider (contract v2.7 §5.17). DPO Pay is primary.
 export async function initializePaystackTransaction(
   req: PaymentInitRequest,
   cfg = paystackConfigFromEnv(),

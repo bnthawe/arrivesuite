@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level callback idempotency and Paystack fallback remain
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level callback idempotency and a live Paystack sandbox run remain
 
 ---
 
@@ -53,7 +53,7 @@ Finance Ops workflow:
 - hello-world booking works
 - worker processes jobs
 - DPO Pay sandbox: 5+ payment cycles (create, verify, return, refund, idempotency)
-- Paystack fallback validated
+- Paystack fallback request shape/error mapping contract-tested (live sandbox pending credentials)
 
 ---
 
@@ -132,7 +132,7 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 - hello-world booking works
 - worker processes jobs
 - DPO Pay: 5+ sandbox cycles
-- Paystack fallback validated
+- Paystack fallback request shape/error mapping contract-tested (live sandbox pending credentials)
 
 → **Phase 1 kickoff (Day 7)**
 
