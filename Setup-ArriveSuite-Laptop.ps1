@@ -18,8 +18,8 @@ Write-Host "`n[2/7] Creating .env.local — bypass DPO ON — no credential erro
 # Laptop Dev — 100% no crash, no Invalid credential opencode
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 DATABASE_URL=$DATABASE_URL
-DPO_COMPANY_TOKEN=B3F59BE7-0756-420E-BB88-1D98E7A6B040
-DPO_SERVICE_TYPE=54841
+DPO_COMPANY_TOKEN=$($env:DPO_PAY_COMPANY_TOKEN)
+DPO_SERVICE_TYPE=$($env:DPO_PAY_SERVICE_TYPE)
 DPO_BASE_URL=https://secure.3gdirectpay.com/API/v6/
 DPO_HOSTED_URL=https://secure.3gdirectpay.com/payv3.php
 LITEAPI_KEY=sand_laptop_dev_no_call
@@ -134,9 +134,9 @@ export async function POST(req: Request){
   const bypass = process.env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true'
   if(bypass){
     const mockToken = `mock_`+Date.now()
-    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream - laptop stable', TransToken: mockToken, hostedUrl: `https://secure.3gdirectpay.com/payv3.php?ID=`+mockToken, CompanyRef: ref, amount: amount, currency:'BWP', testCards:{mc:'5436 8862 6984 8367', visa:'4012 8888 8888 1881', expiry:'12/27', cvv:'123'}})
+    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream - laptop stable', TransToken: mockToken, hostedUrl: `https://secure.3gdirectpay.com/payv3.php?ID=`+mockToken, CompanyRef: ref, amount: amount, currency:'BWP'})
   }
-  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO attempted - check B3F59BE7 service 54841'}, {status:401})
+  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO attempted - configure DPO_PAY_* credentials'}, {status:401})
 }
 "@ | Set-Content -Path "app/api/dpo/create/route.ts" -Encoding utf8
 @"
@@ -166,9 +166,9 @@ Write-Host "✓ Thick tiles 280x240 + 200-220px bold 22px + cart latest bottom s
 Write-Host "✓ Orange Expires 14:59 hotel + Blue Expires 14:30 flight — no crash" -ForegroundColor Green
 Write-Host "`nPostman Dev env:" -ForegroundColor Yellow
 Write-Host "base_url = http://localhost:3000"
-Write-Host "dpo_company_token = B3F59BE7-0756-420E-BB88-1D98E7A6B040"
-Write-Host "dpo_service_type = 54841"
-Write-Host "test_card_mc = 5436 8862 6984 8367"
+Write-Host "dpo_company_token = set DPO_PAY_COMPANY_TOKEN in .env.local"
+Write-Host "dpo_service_type = set DPO_PAY_SERVICE_TYPE in .env.local"
+Write-Host "Test cards: see docs.dpopay.com sandbox credentials"
 Write-Host "`nTo test real DPO sandbox later: set NEXT_PUBLIC_BYPASS_DPO_FOR_DEV=false in .env.local and restart" -ForegroundColor Cyan
 Write-Host "`nStarting npm run dev — Ctrl+C to stop" -ForegroundColor Cyan
 npm run dev

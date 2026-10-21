@@ -6,7 +6,7 @@ export async function POST(req: Request){
   const bypass = process.env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true'
   if(bypass){
     const mockToken = 'mock_'+Date.now()
-    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream', TransToken: mockToken, hostedUrl: 'https://secure.3gdirectpay.com/payv3.php?ID='+mockToken, CompanyRef: ref, amount: amount, currency:'BWP', testCards:{mc:'5436 8862 6984 8367', visa:'4012 8888 8888 1881'}})
+    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream', TransToken: mockToken, hostedUrl: 'https://secure.3gdirectpay.com/payv3.php?ID='+mockToken, CompanyRef: ref, amount: amount, currency:'BWP'})
   }
-  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO check B3F59BE7 service 54841'}, {status:401})
+  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO path is not configured in this mock endpoint'}, {status:401})
 }

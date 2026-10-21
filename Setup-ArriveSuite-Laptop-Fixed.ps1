@@ -15,8 +15,8 @@ Write-Host "[2/7] Creating .env.local..." -ForegroundColor Cyan
 @"
 NEXT_PUBLIC_BASE_URL=http://localhost:3000
 DATABASE_URL=$DATABASE_URL
-DPO_COMPANY_TOKEN=B3F59BE7-0756-420E-BB88-1D98E7A6B040
-DPO_SERVICE_TYPE=54841
+DPO_COMPANY_TOKEN=$($env:DPO_PAY_COMPANY_TOKEN)
+DPO_SERVICE_TYPE=$($env:DPO_PAY_SERVICE_TYPE)
 DPO_BASE_URL=https://secure.3gdirectpay.com/API/v6/
 DPO_HOSTED_URL=https://secure.3gdirectpay.com/payv3.php
 LITEAPI_KEY=sand_laptop_dev_no_call
@@ -83,9 +83,9 @@ export async function POST(req: Request){
   const bypass = process.env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true'
   if(bypass){
     const mockToken = 'mock_'+Date.now()
-    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream', TransToken: mockToken, hostedUrl: 'https://secure.3gdirectpay.com/payv3.php?ID='+mockToken, CompanyRef: ref, amount: amount, currency:'BWP', testCards:{mc:'5436 8862 6984 8367', visa:'4012 8888 8888 1881'}})
+    return NextResponse.json({Result:'000', ResultExplanation:'Bypass dev - no upstream', TransToken: mockToken, hostedUrl: 'https://secure.3gdirectpay.com/payv3.php?ID='+mockToken, CompanyRef: ref, amount: amount, currency:'BWP'})
   }
-  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO check B3F59BE7 service 54841'}, {status:401})
+  return NextResponse.json({Result:'902', ResultExplanation:'Real DPO path is not configured in this mock endpoint'}, {status:401})
 }
 "@ | Set-Content -Path "app/api/dpo/create/route.ts" -Encoding utf8
 @"

@@ -69,8 +69,9 @@ async function postXml(xml: string, cfg: DpoConfig, timeoutMs = 20_000): Promise
   }
 }
 
-// Sandbox test cards (docs): 5436 8862 6984 8367, 4012 8888 8888 1881,
-// Amex 3456 7890 1234 564 — expiry any future MM/YY, CVV 123.
+// Sandbox test cards are documented at
+// https://docs.dpopay.com/dpo-pay-by-network/reference/sandbox-test-credentials
+// and must be supplied at test time, not committed to the repository.
 export async function createDpoToken(
   req: DpoCreateTokenRequest,
   cfg = dpoConfigFromEnv(),
