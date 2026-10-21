@@ -79,7 +79,7 @@ attributed to them when possible.
 | Check | Result |
 |---|---|
 | Web typecheck | Passed |
-| Web unit tests | 4 files passed, 22 tests passed with the test database enabled |
+| Web unit tests | 4 files passed, 23 tests passed with the test database enabled |
 | Request audit shape | Actor, route, status, IP, trace, and key presence are asserted in `apps/web/lib/audit.test.ts` |
 | Body redaction | Test confirms request body and query values are absent from the audit row |
 | Idempotent replay | DB-backed test confirms one `api.write` row for the first write and none for the replay |
