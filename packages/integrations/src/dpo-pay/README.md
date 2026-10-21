@@ -2,7 +2,7 @@
 
 ## Status
 
-Local harness ready. First live sandbox cycle completed on 2026-10-21: 100 BWP create, unpaid verify (`900`), hosted-page payment, paid verify (`000`). See `SANDBOX_RESULTS.md`.
+Local harness ready. Five live sandbox cycles completed on 2026-10-21: 100 BWP create, unpaid verify (`900`), hosted-page payment, paid verify (`000`). Refund and duplicate-verify checks are also recorded. See `SANDBOX_RESULTS.md`.
 
 The production client already lives at `packages/integrations/src/dpopay.ts`. It uses the DPO Pay v6 XML API through the platform `fetch` wrapper and exports:
 
@@ -73,7 +73,7 @@ DPO Pay v6 is XML, not JSON. Send `Content-Type: application/xml`; parse the `<R
 
 ## Acceptance Criteria
 
-- Five or more end-to-end cycles: create, verify, return, refund, idempotency. **Progress: 1/5.**
+- Five or more end-to-end cycles: create, verify, return, refund, idempotency. **Progress: 5/5 payment cycles; callback idempotency and Paystack fallback remain.**
 - Paid state is derived from `verifyToken`, never from a return URL.
 - Duplicate returns/callbacks cannot create a second payment or confirmation.
 - Refunds cannot exceed the original charge or run twice.

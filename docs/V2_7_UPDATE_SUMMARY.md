@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation is in progress (1 of 5 cycles complete on 2026-10-21)
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level callback idempotency and Paystack fallback remain
 
 ---
 
@@ -96,7 +96,7 @@ pnpm --filter @arrivesuite/integrations typecheck
 
 The default tests mock `fetch` and run without credentials. Live sandbox cycles require DPO Pay test credentials and are opt-in via `DPO_LIVE_SANDBOX=1`.
 
-**Sandbox progress:** 1 of 5 cycles complete. Create token (100 BWP), unpaid verify (`Result 900`), Visa hosted-page payment (`TransactionApproval 4444444422`), and paid verify (`Result 000` / `Transaction Paid`) all succeeded on 2026-10-21.
+**Sandbox progress:** 5 of 5 payment cycles complete. Each 100 BWP Visa payment returned `Result 900` before payment and `Result 000` / `Transaction Paid` after. Duplicate `verifyToken` calls are stable. Partial refunds succeeded, and a third 50.00 refund on a 100.00 payment was rejected with `999`. **DPO does not enforce `refundRef` idempotency**, so ArriveSuite must prevent duplicate refunds and concurrent approvals. Full evidence is in `packages/integrations/src/dpo-pay/SANDBOX_RESULTS.md`.
 
 ---
 

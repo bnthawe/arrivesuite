@@ -3,79 +3,39 @@
 **Date:** 2026-10-21  
 **Environment:** DPO Pay sandbox (`https://secure.3gdirectpay.com/API/v6/`)  
 **Account:** Sandbox Account 1 (public test credentials from DPO docs)  
-**Result:** 1 of 5 required cycles complete
+**Result:** 5 of 5 required payment cycles complete; refund and provider-verify checks complete
 
 ---
 
-## Cycle 1 — Create, Pay, Verify
+## Payment Cycles
 
-### 1. Create token
+All five cycles used 100.00 BWP and DPO’s public sandbox Visa test card.
 
-| Field | Value |
-|---|---|
-| Company ref | `ARS-T06-MVIFOMAF` |
-| Amount | `100.00` |
-| Currency | `BWP` |
-| TransToken | `BCC8C6AE-54AD-4A27-999D-9EBFD67F3718` |
-| TransRef | `R87655644` |
-| Hosted page | `https://secure.3gdirectpay.com/payv3.php?ID=BCC8C6AE-54AD-4A27-999D-9EBFD67F3718` |
+| Cycle | Company ref | TransToken | TransRef | Approval |
+|---|---|---|---|---|
+| 1 | `ARS-T06-MVIFOMAF` | `BCC8C6AE-54AD-4A27-999D-9EBFD67F3718` | `R87655644` | `4444444422` |
+| 2 | `ARS-T06-C2-MVIG3CWU` | `02C1CE0C-400A-4302-BD3C-37FA6C0826CE` | `R87655928` | `4444444429` |
+| 3 | `ARS-T06-C3-MVIG5R7P` | `1E852620-B259-404B-B49D-C4460E6A3F6D` | — | `4444444431` |
+| 4 | `ARS-T06-C4-MVIG7J5I` | `B6E09918-2CBA-4277-98A9-06BB29801BBD` | — | `4444444432` |
+| 5 | `ARS-T06-C5-MVIG89E1` | `6EE5F896-B1D4-4442-AB38-E8BBA6816FF5` | — | `4444444433` |
 
-**Result:** success. `createToken` returned `Result 000` with a `TransToken` and `TransRef`.
+Each cycle:
 
-### 2. Verify before payment
+1. `createToken` returned `Result 000` with a `TransToken` and `TransRef`.
+2. `verifyToken` before payment returned `Result 900` / `Transaction not paid yet`.
+3. The hosted page accepted the sandbox Visa.
+4. `verifyToken` after payment returned `Result 000` / `Transaction Paid` with the approval code.
 
-```xml
-<Result>900</Result>
-<ResultExplanation>Transaction not paid yet</ResultExplanation>
-<TransactionAmount>100.00</TransactionAmount>
-<TransactionCurrency>BWP</TransactionCurrency>
-```
+The hosted page requires the DPO terms checkbox before “Pay Now” becomes active.
 
-**Result:** unpaid, as expected. `Result 900` means "not paid yet"; it must not be treated as a completed payment.
+---
 
-### 3. Pay on the hosted page
+## Duplicate Verify Check
 
-| Field | Value |
-|---|---|
-| Card | Visa `4012 8888 8888 1881` |
-| Expiry | Future date |
-| CVV | `123` |
-| Country | Botswana |
-| City | Gaborone |
-| ZIP | `00000` |
-| Terms | Accepted |
-
-**Result:** payment accepted. DPO redirected to:
-
-```text
-https://example.com/api/v1/payments/dpo/return
-  ?TransID=BCC8C6AE-54AD-4A27-999D-9EBFD67F3718
-  &CCDapproval=4444444422
-  &PnrID=ARS-T06-MVIFOMAF
-  &TransactionToken=BCC8C6AE-54AD-4A27-999D-9EBFD67F3718
-  &CompanyRef=ARS-T06-MVIFOMAF
-```
-
-`example.com` is a reserved documentation domain and was used only as a sandbox return URL. The production route must be the real ArriveSuite return endpoint.
-
-### 4. Verify after payment
-
-```xml
-<Result>000</Result>
-<ResultExplanation>Transaction Paid</ResultExplanation>
-<CustomerCredit>1881</CustomerCredit>
-<CustomerCreditType>VISA</CustomerCreditType>
-<TransactionApproval>4444444422</TransactionApproval>
-<TransactionCurrency>BWP</TransactionCurrency>
-<TransactionAmount>100.00</TransactionAmount>
-<TransactionSettlementDate>2026/10/21</TransactionSettlementDate>
-```
-
-**Result:** paid. The client returned:
+Each paid token was verified twice. Both calls returned identical results:
 
 ```json
 {
-  "paid": true,
   "resultCode": "000",
   "resultExplanation": "Transaction Paid",
   "amountMajor": "100.00",
@@ -84,25 +44,57 @@ https://example.com/api/v1/payments/dpo/return
 }
 ```
 
+Provider-level verification is stable and safe to repeat. Full duplicate-return/callback idempotency still needs the app/database path; the `payments-capture` helper uses `providerRef` as its replay key, but concurrent-request hardening belongs to T0.3.
+
+---
+
+## Refund Check
+
+Cycle 5 was used for refund testing.
+
+| Attempt | Amount | Result |
+|---|---|---|
+| First partial refund | 50.00 BWP | `000` / `Refund successful` |
+| Second partial refund | 50.00 BWP | `000` / `Refund successful` |
+| Third partial refund | 50.00 BWP | `999` / `Refund request is larger than amount paid in transaction. (150.00>100.00)` |
+
+After both 50.00 refunds, `verifyToken` still returned:
+
+```xml
+<Result>000</Result>
+<ResultExplanation>Transaction Paid</ResultExplanation>
+<TransactionAmount>100.00</TransactionAmount>
+<TransactionNetAmount>0.00</TransactionNetAmount>
+```
+
+### Important finding
+
+**DPO does not treat `refundRef` as an idempotency key.** The second refund used a different `refundRef` and succeeded again. A retry with the same logical refund could therefore double-refund unless ArriveSuite enforces idempotency and the remaining refundable balance.
+
+The existing refund routes already calculate the remaining balance from `refunds.amountCents`; this must remain mandatory. The approve route's `pending → approved` check is sequential, but concurrent approvals still need an atomic claim or request idempotency key (T0.3).
+
 ---
 
 ## Findings
 
-1. **The XML API works as implemented.** `createToken` and `verifyToken` both accept the current request shapes in `packages/integrations/src/dpopay.ts`.
+1. **XML contract works as implemented.** `createToken` and `verifyToken` accept the current request shapes in `packages/integrations/src/dpopay.ts`.
 2. **`Result 900` is the unpaid state.** A newly created token returns `900` / `Transaction not paid yet`.
-3. **`Result 000` plus `Transaction Paid` is the paid state.** The approval code appears in `TransactionApproval` and in the return URL as `CCDapproval`.
-4. **The hosted page requires the terms checkbox.** The "Pay Now" button stays inactive until the DPO terms checkbox is checked.
-5. **`verifyDpoToken` was hardened.** It now requires a paid explanation, not just `Result 000`, so a `000` response with a contradictory explanation cannot mark a booking paid.
-6. **The sandbox does not challenge this test Visa with 3-D Secure.** EU-card 3-D Secure remains unvalidated (§19.3).
+3. **`Result 000` plus `Transaction Paid` is the paid state.** `verifyDpoToken` now requires the paid explanation, not just `Result 000`.
+4. **The hosted page requires the terms checkbox.**
+5. **Provider refunds are not idempotent.** DPO accepted two 50.00 refunds and rejected only the third for exceeding the captured amount. ArriveSuite must enforce idempotency and the refundable balance.
+6. **Refund state is not visible in `verifyToken`.** After a full refund the transaction still reports `Transaction Paid` with `TransactionNetAmount 0.00`; refund status must come from the `refunds` table, not the provider verification endpoint.
+7. **The sandbox does not challenge this test Visa with 3-D Secure.** EU-card 3-D Secure remains unvalidated (§19.3).
 
 ---
 
 ## Remaining T0.6 Work
 
-- [ ] 4 more end-to-end cycles (target: 5+ total).
-- [ ] Duplicate return/callback delivery and idempotency.
-- [ ] Partial refund and duplicate-refund rejection.
-- [ ] Paystack fallback shape and error mapping.
+- [x] 5 payment cycles.
+- [x] Duplicate provider verification is stable.
+- [ ] Full duplicate return/callback test through the app and database (T0.3 dependency).
+- [x] Partial refund and over-refund rejection.
+- [x] Duplicate-refund behaviour documented; app-level idempotency required.
+- [ ] Paystack fallback shape and error mapping (needs Paystack credentials).
 - [ ] EU-issued card / 3-D Secure behaviour, if DPO can provide a test card.
 
 ## Reproduce

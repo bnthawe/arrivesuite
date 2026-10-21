@@ -188,6 +188,26 @@ describe('refundDpoToken', () => {
     expect(init.body).toContain('<Request>refundToken</Request>');
     expect(init.body).toContain('<refundAmount>50.00</refundAmount>');
   });
+
+  it('surfaces the provider message when the refund exceeds the captured amount', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      xmlResponse(
+        '<API3G><Result>999</Result><ResultExplanation>Refund failed - Refund request is larger than amount paid in transaction. (150.00&gt;100.00)</ResultExplanation></API3G>',
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      refundDpoToken(
+        {
+          transToken: 'tok-123',
+          amountMajor: '50.00',
+          details: 'Duplicate refund',
+        },
+        config,
+      ),
+    ).rejects.toThrow('larger than amount paid');
+  });
 });
 
 describe('dpoHostedPageUrl', () => {

@@ -1,7 +1,7 @@
 # DPO Pay Sandbox Integration Spike
 
 **Goal:** validate DPO Pay sandbox for the Phase 0 → 1 gate (5+ end-to-end payment cycles)  
-**Status:** 1 of 5 cycles complete (create + paid verify, 2026-10-21); duplicate return, refund, and Paystack fallback pending
+**Status:** 5 of 5 payment cycles complete (2026-10-21); refund and duplicate-verify checks complete; app-level callback idempotency and Paystack fallback pending
 
 **Owner:** Solo developer  
 **Deadline:** Day 3 (T0.6)  
@@ -188,9 +188,9 @@ If server-to-server callbacks are enabled in the sandbox, verify them the same w
 - [x] T0.6.2 Add local tests for config, create, verify, refund, and sandbox bypass.
 - [x] T0.6.3 Run createToken against the sandbox with 100 BWP (500 and 1,000 BWP still pending).
 - [x] T0.6.4 Run verifyToken before and after payment; `900` unpaid and `000` paid confirmed.
-- [ ] T0.6.5 Deliver duplicate return/callback notifications and verify idempotency.
-- [ ] T0.6.6 Run a partial refund and a duplicate-refund attempt.
-- [ ] T0.6.7 Validate the Paystack fallback shape and error mapping.
+- [ ] T0.6.5 Deliver duplicate return/callback notifications through the app and verify idempotency (T0.3 dependency). Provider-level duplicate `verifyToken` calls are stable.
+- [x] T0.6.6 Partial refund and over-refund rejection verified. **DPO does not use `refundRef` as an idempotency key**, so the app must prevent duplicate refunds.
+- [ ] T0.6.7 Validate the Paystack fallback shape and error mapping (needs Paystack credentials).
 - [x] T0.6.8 Record sandbox results in `SANDBOX_RESULTS.md`.
 
 The local harness:
@@ -206,7 +206,7 @@ pnpm --filter @arrivesuite/integrations typecheck
 
 Five or more end-to-end cycles covering:
 
-> **Progress:** 1 of 5 complete — create + paid verify on 2026-10-21 (`SANDBOX_RESULTS.md`).
+> **Progress:** 5 of 5 payment cycles complete on 2026-10-21. Refund and duplicate-verify checks are recorded in `SANDBOX_RESULTS.md`; app-level callback idempotency and Paystack fallback remain.
 
 1. Create token (payment intent)
 2. Verify token and reconcile

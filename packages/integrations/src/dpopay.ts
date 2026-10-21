@@ -121,6 +121,9 @@ export interface DpoRefundRequest {
   refundRef?: string;
 }
 
+// DPO does not treat refundRef as an idempotency key. Replaying the same
+// logical refund can succeed again up to the captured amount, so callers must
+// enforce idempotency and the remaining refundable balance before calling.
 export async function refundDpoToken(
   req: DpoRefundRequest,
   cfg = dpoConfigFromEnv(),
