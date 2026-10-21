@@ -12,6 +12,7 @@ type DbModule = typeof import('@arrivesuite/db');
 type BookingModule = typeof import('./bookings-core');
 type CaptureModule = typeof import('./payments-capture');
 type IdempotencyModule = typeof import('./idempotency');
+type RefundSettlementModule = typeof import('./refund-settlement');
 type DrizzleModule = typeof import('drizzle-orm');
 
 const testDatabase = process.env.TEST_DATABASE_URL;
@@ -48,10 +49,12 @@ suite('critical path: booking creation and payment capture', () => {
   let bookingm: BookingModule;
   let capturem: CaptureModule;
   let idempotencym: IdempotencyModule;
+  let refundm: RefundSettlementModule;
   let dz: DrizzleModule;
 
   const bookingIds: string[] = [];
   const intentIds: string[] = [];
+  const refundIds: string[] = [];
   const snapshotIds: string[] = [];
   const traces: string[] = [];
 
@@ -61,6 +64,7 @@ suite('critical path: booking creation and payment capture', () => {
     bookingm = await import('./bookings-core');
     capturem = await import('./payments-capture');
     idempotencym = await import('./idempotency');
+    refundm = await import('./refund-settlement');
     dz = await import('drizzle-orm');
   });
 
@@ -69,6 +73,9 @@ suite('critical path: booking creation and payment capture', () => {
     try {
       if (traces.length > 0) {
         await dbm.db.delete(dbm.auditEvents).where(dz.inArray(dbm.auditEvents.traceId, traces));
+      }
+      if (refundIds.length > 0) {
+        await dbm.db.delete(dbm.refunds).where(dz.inArray(dbm.refunds.id, refundIds));
       }
       if (intentIds.length > 0) {
         await dbm.db.delete(dbm.payments).where(dz.inArray(dbm.payments.intentId, intentIds));
@@ -243,6 +250,101 @@ suite('critical path: booking creation and payment capture', () => {
       .limit(1);
     expect(bookingAfter.status).toBe('cancelled');
     expect(bookingAfter.paidCents).toBe(0);
+  });
+
+  it('moves a booking to refunded only after the full capture is refunded', async () => {
+    const booking = await createTestBooking();
+    const { intent, providerRef } = await createTestIntent(booking.id);
+
+    const captureTrace = randomUUID();
+    traces.push(captureTrace);
+    const captured = await capturem.capturePaymentByProviderRef({
+      providerRef,
+      amountCents: 10000,
+      currency: 'BWP',
+      providerPaymentId: 'TEST-REFUND-PAYMENT',
+      traceId: captureTrace,
+    });
+    expect(captured.ok).toBe(true);
+
+    const [payment] = await dbm.db
+      .select()
+      .from(dbm.payments)
+      .where(dz.eq(dbm.payments.intentId, intent.id))
+      .limit(1);
+    if (!payment) throw new Error('Captured payment row is missing');
+
+    const partialTrace = randomUUID();
+    traces.push(partialTrace);
+    const [partial] = await dbm.db
+      .insert(dbm.refunds)
+      .values({ paymentId: payment.id, amountCents: 4000, state: 'approved' })
+      .returning();
+    refundIds.push(partial.id);
+
+    const partialResult = await refundm.settleCompletedRefund({
+      refundId: partial.id,
+      traceId: partialTrace,
+    });
+    expect(partialResult).toMatchObject({
+      ok: true,
+      bookingStatus: 'confirmed',
+      refundedCents: 4000,
+      fullyRefunded: false,
+    });
+
+    const [afterPartial] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(afterPartial.status).toBe('confirmed');
+    expect(afterPartial.refundedCents).toBe(4000);
+
+    const fullTrace = randomUUID();
+    traces.push(fullTrace);
+    const [rest] = await dbm.db
+      .insert(dbm.refunds)
+      .values({ paymentId: payment.id, amountCents: 6000, state: 'approved' })
+      .returning();
+    refundIds.push(rest.id);
+
+    const fullResult = await refundm.settleCompletedRefund({
+      refundId: rest.id,
+      traceId: fullTrace,
+    });
+    expect(fullResult).toMatchObject({
+      ok: true,
+      bookingStatus: 'refunded',
+      refundedCents: 10000,
+      fullyRefunded: true,
+    });
+    if (fullResult.ok) {
+      expect(fullResult.statusChanges).toEqual([
+        { from: 'confirmed', to: 'cancelled' },
+        { from: 'cancelled', to: 'refunded' },
+      ]);
+    }
+
+    const [afterFull] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(afterFull.status).toBe('refunded');
+    expect(afterFull.refundedCents).toBe(10000);
+
+    const transitions = await dbm.db
+      .select()
+      .from(dbm.auditEvents)
+      .where(
+        dz.and(
+          dz.eq(dbm.auditEvents.action, 'booking.transition'),
+          dz.eq(dbm.auditEvents.entityId, booking.id),
+          dz.eq(dbm.auditEvents.traceId, fullTrace),
+        ),
+      );
+    expect(transitions).toHaveLength(2);
   });
 
   it('writes one request audit row per write and none for an idempotent replay', async () => {

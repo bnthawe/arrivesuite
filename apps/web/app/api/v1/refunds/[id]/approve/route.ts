@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { and, eq, sql } from 'drizzle-orm';
-import { accounts, auditEvents, bookings, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
+import { and, eq } from 'drizzle-orm';
+import { accounts, auditEvents, db, paymentIntents, payments, refunds } from '@arrivesuite/db';
 import { createPaystackRefund, refundDpoToken, refundFlutterwaveTransaction, refundStripePayment } from '@arrivesuite/integrations';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { bookingRevenueLines, invertLines, postLedgerLines } from '@/lib/ledger';
 import { withIdempotency } from '@/lib/idempotency';
+import { settleCompletedRefund, type RefundSettlementResult } from '@/lib/refund-settlement';
 
 const approveSchema = z.object({
   approvedBy: z.string().uuid(),
@@ -107,11 +108,33 @@ async function handlePost(request: Request, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Provider refund failed' }, { status: 502 });
   }
 
-  await db.update(refunds).set({ state: 'completed' }).where(eq(refunds.id, refund.id));
-  await db
-    .update(bookings)
-    .set({ refundedCents: sql`${bookings.refundedCents} + ${refund.amountCents}` })
-    .where(eq(bookings.id, intent.bookingId));
+  let settlement: RefundSettlementResult;
+  try {
+    settlement = await settleCompletedRefund({ refundId: refund.id, traceId });
+  } catch (err) {
+    await db.insert(auditEvents).values({
+      actorId: approver.id,
+      actorRealm: 'admin',
+      action: 'refund.settlement_failed',
+      entityType: 'refund',
+      entityId: refund.id,
+      diff: { error: (err as Error)?.message ?? 'database settlement failed' },
+      traceId,
+    });
+    return NextResponse.json({ error: 'Refund settlement failed' }, { status: 500 });
+  }
+  if (!settlement.ok) {
+    await db.insert(auditEvents).values({
+      actorId: approver.id,
+      actorRealm: 'admin',
+      action: 'refund.settlement_failed',
+      entityType: 'refund',
+      entityId: refund.id,
+      diff: { error: settlement.error },
+      traceId,
+    });
+    return NextResponse.json({ error: settlement.error }, { status: settlement.status });
+  }
 
   // Mirror posting pro-rata: reverse the revenue split, credit cash back.
   // Best-effort like capture; repair endpoint backfills on failure.
@@ -151,7 +174,14 @@ async function handlePost(request: Request, { params }: { params: Promise<{ id: 
     action: 'refund.completed',
     entityType: 'refund',
     entityId: refund.id,
-    diff: { paymentId: payment.id, bookingId: intent.bookingId, amountCents: refund.amountCents, method: intent.method },
+    diff: {
+      paymentId: payment.id,
+      bookingId: intent.bookingId,
+      amountCents: refund.amountCents,
+      method: intent.method,
+      bookingStatus: settlement.bookingStatus,
+      fullyRefunded: settlement.fullyRefunded,
+    },
     traceId,
   });
 

@@ -57,6 +57,12 @@ default. It is idempotent. `db:backfill-booking-status` can also be run alone.
   `confirmed`, `fulfilled`, `ticketed`, and legacy `pending` to move to
   `no_show`, and updates conditionally so a concurrent state change cannot be
   overwritten.
+- **Refund settlement** (`apps/web/lib/refund-settlement.ts`) runs after the
+  provider refund succeeds, in one database transaction. It marks the refund
+  `completed`, adds to `bookings.refunded_cents`, and only moves the booking to
+  `refunded` once the full captured amount is returned. States that cannot move
+  directly to `refunded` pass through `cancelled` first, with one
+  `booking.transition` audit row for each step.
 
 ## Verification
 
@@ -70,15 +76,15 @@ Fresh `arrivesuite_test` database:
 | Duplicate Paystack callback | Second delivery replayed; no second payment or paid increment |
 | Cancelled booking capture | `409 Booking is cancelled`; intent still `requires_payment`; zero payments; `paid_cents = 0` |
 | Transition audit | One `booking.transition` row with `pending_payment -> confirmed` |
+| Partial refund | Booking stays `confirmed`; `refunded_cents` increases |
+| Full refund | Booking becomes `refunded`; confirmed bookings pass through `cancelled` with two transition audit rows |
 
 ## Remaining gaps
 
-- Ticketing, exchange, cancellation, and refund endpoints do not exist yet, so
-  those transitions are defined but not wired to user flows.
-- A full refund does not automatically move a `confirmed` booking to
-  `cancelled -> refunded`. The refund flow updates money and refund state only.
-- Ledger posting remains best-effort after capture (ADR-0017), not part of the
-  state/payment transaction.
+- Ticketing, exchange, and cancellation endpoints do not exist yet, so those
+  transitions are defined but not wired to user flows.
+- Ledger posting remains best-effort after capture/refund (ADR-0017), not part
+  of the state/payment transaction.
 - `no_show` from `fulfilled`/`ticketed` and legacy `pending` are operational
   extensions beyond the transitions printed in Section 9.1; they are explicit
   in the code table.
