@@ -7,6 +7,20 @@ on:
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arrivesuite_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -39,6 +53,19 @@ jobs:
 
       - name: Typecheck pricing
         run: pnpm --filter @arrivesuite/pricing typecheck
+
+      - name: Migrate and seed test database
+        run: |
+          pnpm --filter @arrivesuite/db db:migrate
+          pnpm --filter @arrivesuite/db db:seed
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrivesuite_test
+
+      - name: Test
+        run: pnpm test
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrivesuite_test
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrivesuite_test
 
       - name: Build web
         run: pnpm --filter @arrivesuite/web build
