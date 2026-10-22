@@ -43,12 +43,18 @@ const GRACE_MS = 10 * 60_000;
 const RENOTIFY_MS = 60 * 60_000;
 
 export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<ReconcileResult> {
-  return await Promise.race([
-    runReconciliation(job),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('reconciliation timed out')), PROCESS_TIMEOUT_MS),
-    ),
-  ]);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      runReconciliation(job),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('reconciliation timed out')), PROCESS_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    // Do not leave a 4-minute timer alive after a fast run.
+    if (timer) clearTimeout(timer);
+  }
 }
 
 type BookingRow = typeof bookings.$inferSelect;
@@ -109,8 +115,18 @@ async function checkSweep(job: Job, runId: string, traceId: string): Promise<Rec
     .where(and(eq(paymentIntents.state, 'requires_payment'), lt(paymentIntents.expiresAt, new Date())))
     .returning({ id: paymentIntents.id });
 
-  // Cursor over ALL open bookings (createdAt, id) — no silent 100-row cap.
-  const openStatuses: ('pending' | 'confirmed' | 'on_hold')[] = ['pending', 'confirmed', 'on_hold'];
+  // Cursor over ALL active bookings (createdAt, id) — no silent 100-row cap.
+  // `pending_payment` is the current creation state; the rest keep the sweep
+  // covering bookings that are still moving through the Section 9.1 machine.
+  const openStatuses: BookingRow['status'][] = [
+    'pending',
+    'pending_payment',
+    'confirmed',
+    'on_hold',
+    'ticketing',
+    'ticketed',
+    'exchanging',
+  ];
   const checked: BookingRow[] = [];
   let cursor: { createdAt: Date; id: string } | null = null;
   for (;;) {

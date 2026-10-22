@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 required cycles plus 500.00 and 1,000.00 BWP optional cycles complete (2026-10-21); app-level DPO return replay, idempotency, the core booking state machine, the CI critical-path test gate, and the secrets cleanup are implemented and verified; live Paystack sandbox validation is blocked by an invalid local test key; EU-card 3-D Secure remains provider-dependent
+**Status:** Requirements merged; Phase 0 gate closed; DPO Pay sandbox validation has 5 of 5 required cycles plus 500.00 and 1,000.00 BWP optional cycles complete (2026-10-21); app-level DPO return replay, idempotency, the core booking state machine, the CI critical-path test gate, worker reconciliation E2E coverage, and the secrets cleanup are implemented and verified; live Paystack sandbox validation is blocked by an invalid local test key; EU-card 3-D Secure remains provider-dependent
 
 ---
 
@@ -51,7 +51,7 @@ Finance Ops workflow:
 
 - CI green
 - hello-world booking works
-- worker processes jobs
+- worker processes jobs (BullMQ → Redis → Postgres reconciliation test, `/health` readiness, CI Redis service)
 - DPO Pay sandbox: 5+ payment cycles (create, verify, return, refund, idempotency), including optional 500.00 and 1,000.00 BWP amounts
 - Paystack fallback request shape/error mapping contract-tested (live sandbox pending a valid test key)
 
@@ -110,7 +110,7 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 | T0.2 — Audit | 2 days | Yes | Done: request-level audit on guarded writes, cached actor resolution, domain-route opt-outs (`docs/T0_2_AUDIT.md`) |
 | T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 37 route files covered (`docs/T0_3_IDEMPOTENCY.md`) |
 | T0.4 - State machine | 2 days | Yes | Done: §9.1 states/transition map, `pending_payment` backfill, atomic capture transition, no-show guard (`docs/T0_4_STATE_MACHINE.md`) |
-| T0.5 - Tests | 3 days | Yes | Done: unit tests, DB-backed booking/capture critical path, PostgreSQL service and `pnpm test` in CI (`docs/T0_5_TESTS.md`); 3-D Secure browser E2E remains provider-dependent |
+| T0.5 - Tests | 3 days | Yes | Done: unit tests, DB-backed booking/capture critical path, worker reconciliation E2E through BullMQ/Redis/Postgres, PostgreSQL + Redis services and `pnpm test` in CI (`docs/T0_5_TESTS.md`); 3-D Secure browser E2E remains provider-dependent |
 | T0.6 — DPO Pay sandbox | 2–3 days | Phase 1 gate | Done for DPO: 5 required + 2 optional cycles, refunds, app return replay. EU 3-D Secure test card unavailable; live Paystack validation blocked by an invalid local key |
 
 **Total:** ~8–9 days across parallel tracks. DPO’s required T0.6 cycles are complete before Phase 1 kickoff; the 3-D Secure and Paystack live checks remain open risks.
@@ -132,7 +132,7 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 
 - CI green (lint, typecheck, tests)
 - hello-world booking works
-- worker processes jobs
+- worker processes jobs, including the real queue/Redis/Postgres reconciliation sweep and `/health`
 - DPO Pay: 5+ sandbox cycles, including the 500.00 and 1,000.00 BWP checks
 - Paystack fallback request shape/error mapping contract-tested (live sandbox pending a valid test key)
 
