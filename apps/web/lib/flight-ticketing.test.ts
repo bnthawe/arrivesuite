@@ -32,6 +32,7 @@ type DbModule = typeof import('@arrivesuite/db');
 type BookingModule = typeof import('./bookings-core');
 type CaptureModule = typeof import('./payments-capture');
 type TicketingModule = typeof import('./ticketing');
+type CancellationModule = typeof import('./cancellation');
 type DrizzleModule = typeof import('drizzle-orm');
 type IntegrationsModule = typeof import('@arrivesuite/integrations');
 type NotificationsModule = typeof import('./notifications');
@@ -44,6 +45,7 @@ suite('payment-first flight ticketing', () => {
   let bookingm: BookingModule;
   let capturem: CaptureModule;
   let ticketingm: TicketingModule;
+  let cancellationm: CancellationModule;
   let dz: DrizzleModule;
   let integrationsm: IntegrationsModule;
   let notificationsm: NotificationsModule;
@@ -61,6 +63,7 @@ suite('payment-first flight ticketing', () => {
     bookingm = await import('./bookings-core');
     capturem = await import('./payments-capture');
     ticketingm = await import('./ticketing');
+    cancellationm = await import('./cancellation');
     dz = await import('drizzle-orm');
     integrationsm = await import('@arrivesuite/integrations');
     notificationsm = await import('./notifications');
@@ -73,6 +76,15 @@ suite('payment-first flight ticketing', () => {
         await dbm.db.delete(dbm.auditEvents).where(dz.inArray(dbm.auditEvents.traceId, traces));
       }
       if (intentIds.length > 0) {
+        const paymentRows = await dbm.db
+          .select({ id: dbm.payments.id })
+          .from(dbm.payments)
+          .where(dz.inArray(dbm.payments.intentId, intentIds));
+        if (paymentRows.length > 0) {
+          await dbm.db
+            .delete(dbm.refunds)
+            .where(dz.inArray(dbm.refunds.paymentId, paymentRows.map((row) => row.id)));
+        }
         await dbm.db.delete(dbm.payments).where(dz.inArray(dbm.payments.intentId, intentIds));
         await dbm.db.delete(dbm.paymentIntents).where(dz.inArray(dbm.paymentIntents.id, intentIds));
       }
@@ -100,7 +112,10 @@ suite('payment-first flight ticketing', () => {
     }
   });
 
-  async function createPaidBooking(traceId: string) {
+  async function createPaidBooking(
+    traceId: string,
+    options: { refundable?: boolean } = {},
+  ) {
     const [account] = await dbm.db
       .select()
       .from(dbm.accounts)
@@ -133,6 +148,7 @@ suite('payment-first flight ticketing', () => {
               airline: 'Air Botswana',
               flight: 'BP201',
               departureDate: '2026-12-10',
+              refundable: options.refundable ?? false,
             },
           },
         },
@@ -310,4 +326,128 @@ suite('payment-first flight ticketing', () => {
       expect.arrayContaining(['booking.ticketing_failed', 'booking.transition']),
     );
   });
+
+  it('cancels a refundable ticketed flight and requests a refund', async () => {
+    const traceId = randomUUID();
+    traces.push(traceId);
+    const booking = await createPaidBooking(traceId, { refundable: true });
+    const fulfilled = await ticketingm.fulfillPaidBooking(booking.id, traceId);
+    expect(fulfilled).toEqual({ ok: true, status: 'ticketed' });
+
+    const [admin] = await dbm.db
+      .select()
+      .from(dbm.accounts)
+      .where(dz.eq(dbm.accounts.email, 'admin@arrivesuite.com'))
+      .limit(1);
+
+    const result = await cancellationm.cancelBooking({
+      ref: booking.ref.trim(),
+      traceId,
+      actorId: admin?.id,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result).toMatchObject({
+      alreadyCancelled: false,
+      refundAmountCents: booking.totalCents,
+    });
+    expect(result.refund?.state).toBe('pending');
+    expect(result.providerCancellation).toMatchObject({
+      bookingStatus: 'CANCELLED',
+    });
+
+    const [cancelled] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(cancelled?.status).toBe('cancelled');
+    expect(cancelled?.cancelledAt).toBeTruthy();
+
+    const [item] = await dbm.db
+      .select()
+      .from(dbm.bookingItems)
+      .where(dz.eq(dbm.bookingItems.bookingId, booking.id))
+      .limit(1);
+    expect(item?.status).toBe('cancelled');
+    expect(item?.snapshot).toMatchObject({
+      cancellation: {
+        reasonCode: 'CR01',
+        refundAmountCents: booking.totalCents,
+        fareRefundable: true,
+      },
+    });
+
+    expect(result.refund).toMatchObject({
+      amountCents: booking.totalCents,
+      reason: `Flight cancellation ${booking.ref.trim()}`,
+    });
+
+    const audits = await dbm.db
+      .select()
+      .from(dbm.auditEvents)
+      .where(dz.eq(dbm.auditEvents.traceId, traceId));
+    expect(audits.map((row) => row.action)).toEqual(
+      expect.arrayContaining([
+        'booking.cancelled',
+        'booking.transition',
+        'refund.requested',
+      ]),
+    );
+
+    const replay = await cancellationm.cancelBooking({
+      ref: booking.ref.trim(),
+      traceId,
+      actorId: admin?.id,
+    });
+    expect(replay.ok).toBe(true);
+    if (replay.ok) expect(replay.alreadyCancelled).toBe(true);
+  }, 15_000);
+
+  it('cancels a non-refundable flight without creating a refund', async () => {
+    const traceId = randomUUID();
+    traces.push(traceId);
+    const booking = await createPaidBooking(traceId);
+    const fulfilled = await ticketingm.fulfillPaidBooking(booking.id, traceId);
+    expect(fulfilled).toEqual({ ok: true, status: 'ticketed' });
+
+    const [admin] = await dbm.db
+      .select()
+      .from(dbm.accounts)
+      .where(dz.eq(dbm.accounts.email, 'admin@arrivesuite.com'))
+      .limit(1);
+
+    const result = await cancellationm.cancelBooking({
+      ref: booking.ref.trim(),
+      traceId,
+      actorId: admin?.id,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result).toMatchObject({
+      alreadyCancelled: false,
+      refundAmountCents: 0,
+      refund: null,
+    });
+
+    const [cancelled] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(cancelled?.status).toBe('cancelled');
+
+    const [payment] = await dbm.db
+      .select({ id: dbm.payments.id })
+      .from(dbm.payments)
+      .innerJoin(dbm.paymentIntents, dz.eq(dbm.payments.intentId, dbm.paymentIntents.id))
+      .where(dz.eq(dbm.paymentIntents.bookingId, booking.id))
+      .limit(1);
+    expect(payment).toBeTruthy();
+    const refundRows = await dbm.db
+      .select()
+      .from(dbm.refunds)
+      .where(dz.eq(dbm.refunds.paymentId, payment!.id));
+    expect(refundRows).toHaveLength(0);
+  }, 15_000);
 });

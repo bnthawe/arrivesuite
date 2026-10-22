@@ -1,4 +1,12 @@
-import type { FlightOffer, FlightOrderRequest, FlightOrderResponse, FlightSearchRequest } from '@arrivesuite/types';
+import type {
+  FlightCancellationQuote,
+  FlightCancellationRequest,
+  FlightCancellationResult,
+  FlightOffer,
+  FlightOrderRequest,
+  FlightOrderResponse,
+  FlightSearchRequest,
+} from '@arrivesuite/types';
 import { providerFetch, ProviderError } from './http';
 
 export interface OnArrivalConfig {
@@ -244,5 +252,125 @@ export async function createFlightOrder(
     pnr: data.pnr ?? '',
     ticket: data.ticket ?? '',
     pdf: data.pdf ?? '',
+  };
+}
+
+function cancellationPath(orderId: string): string {
+  return `/v1/flight/orders/${encodeURIComponent(orderId)}/cancellation`;
+}
+
+function cancellationEnvelope(res: Record<string, unknown>): Record<string, unknown> {
+  const data = res.data;
+  return data && typeof data === 'object' ? (data as Record<string, unknown>) : res;
+}
+
+function cancellationReasons(value: unknown): FlightCancellationQuote['reasons'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const row = raw as Record<string, unknown>;
+    const code = typeof row.code === 'string' ? row.code : undefined;
+    const display = typeof row.display === 'string' ? row.display : undefined;
+    if (!code || !display) return [];
+    return [
+      {
+        code,
+        display,
+        ...(typeof row.additionalReason === 'boolean'
+          ? { additionalReason: row.additionalReason }
+          : {}),
+      },
+    ];
+  });
+}
+
+function refundMinor(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const amount = (value as Record<string, unknown>).totalRefundAmount;
+  return typeof amount === 'number' && Number.isFinite(amount)
+    ? Math.max(0, Math.round(amount * 100))
+    : null;
+}
+
+// GET /v1/flight/orders/{orderId}/cancellation. The quote is advisory; the
+// booking layer applies its own refund policy and caps the amount to the
+// remaining captured balance.
+export async function getFlightCancellationQuote(
+  orderId: string,
+  cfg = onArrivalConfigFromEnv(),
+): Promise<FlightCancellationQuote> {
+  if (cfg.sandbox) {
+    return {
+      cancellable: true,
+      supportRequired: false,
+      reasons: [{ code: 'CR01', display: 'My plans changed' }],
+      estimatedRefundMinor: null,
+    };
+  }
+  const res = await providerFetch<Record<string, unknown>>(
+    cancellationPath(orderId),
+    {
+      method: 'GET',
+      headers: authHeaders(cfg),
+    },
+    { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, provider: 'onarrival' },
+  );
+  const data = cancellationEnvelope(res);
+  return {
+    cancellable: data.cancellable === true,
+    supportRequired: data.supportRequired === true,
+    reasons: cancellationReasons(data.reasons),
+    estimatedRefundMinor: refundMinor(data.refund),
+  };
+}
+
+// POST /v1/flight/orders/{orderId}/cancellation. The gateway records the
+// refund asynchronously; callers must not treat this response alone as a
+// completed refund.
+export async function cancelFlightOrder(
+  req: FlightCancellationRequest,
+  cfg = onArrivalConfigFromEnv(),
+): Promise<FlightCancellationResult> {
+  if (cfg.sandbox) {
+    return {
+      orderId: req.orderId,
+      bookingStatus: 'CANCELLED',
+      cancellationId: `cancel_${req.orderId}`,
+    };
+  }
+  const res = await providerFetch<Record<string, unknown>>(
+    cancellationPath(req.orderId),
+    {
+      method: 'POST',
+      headers: authHeaders(cfg),
+      body: JSON.stringify({
+        reason: req.reason,
+        code: req.code,
+        additionalReason: req.additionalReason ?? false,
+        ...(req.remarks ? { remarks: req.remarks } : {}),
+      }),
+    },
+    { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, provider: 'onarrival' },
+  );
+  const data = cancellationEnvelope(res);
+  const transactions = Array.isArray(data.cancellationTransactionInfos)
+    ? data.cancellationTransactionInfos
+    : [];
+  const cancellationId = transactions
+    .map((row) =>
+      row && typeof row === 'object'
+        ? (row as Record<string, unknown>).cancellationId
+        : undefined,
+    )
+    .find((value): value is string => typeof value === 'string' && value.length > 0);
+
+  return {
+    orderId:
+      typeof data.id === 'string' && data.id.length > 0 ? data.id : req.orderId,
+    bookingStatus:
+      typeof data.bookingStatus === 'string' && data.bookingStatus.length > 0
+        ? data.bookingStatus
+        : 'CANCELLATION_REQUESTED',
+    ...(cancellationId ? { cancellationId } : {}),
   };
 }

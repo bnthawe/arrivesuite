@@ -64,6 +64,7 @@ export async function GET(
       .orderBy(desc(alertStates.firstSeenAt)),
   ]);
 
+  const itemIds = items.map((item) => item.id);
   const intentIds = intents.map((intent) => intent.id);
   const paymentRows =
     intentIds.length > 0
@@ -101,6 +102,7 @@ export async function GET(
     .where(
       inArray(auditEvents.entityId, [
         bookingId,
+        ...itemIds,
         ...intentIds,
         ...paymentIds,
         ...refundIds,

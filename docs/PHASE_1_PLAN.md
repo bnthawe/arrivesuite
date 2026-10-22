@@ -1,11 +1,11 @@
 # Phase 1 implementation plan — sourced flights + B2C
 
-Status: **slices 1 and 2 committed; slice 3 admin controls implemented and
-locally validated (2026-10-22). A browser run with local DPO simulation reached
-ticketed + voucher + WhatsApp sandbox. The live DPO sandbox API is currently
-blocked by CloudFront HTTP 403 from this environment.**
-Baseline: slice 2 plus CI fixes at `cce8b6f`; slice 3 changes are committed with
-this document.
+Status: **slices 1–3 committed; slice 4 cancellation/refund controls implemented
+and locally validated (2026-10-22). Browser runs with local DPO simulation
+reached ticketed + voucher + WhatsApp sandbox, then cancelled + refunded. The
+live DPO sandbox API is currently blocked by CloudFront HTTP 403 from this
+environment.**
+Baseline: slice 3 at `ed16cb9`; slice 4 is in the working tree with this document.
 
 ## Provider decision
 
@@ -27,16 +27,16 @@ adapter can be added later without changing booking or pricing code.
 
 | §17.4 deliverable | State | Next slice |
 | --- | --- | --- |
-| Flight provider adapter (search, offer, order, cancel) | Search/order exist on OnArrival; offer data enriched; cancel missing | Add cancel + contract tests |
+| Flight provider adapter (search, offer, order, cancel) | Search/order/cancel exist on OnArrival; offer data enriched; cancellation quote/cancel contract tests added | Provider-native idempotency |
 | Pricing engine v1 with signed quotes | Server-priced search/detail totals; search-scoped opaque offer keys; signed quote enforced by checkout; occupancy pinned to the cached search | FX and tax edge cases |
-| B2C search → detail → checkout → confirmation | Payment-first flight path implemented; confirmation page is signed-token protected; local-simulation browser E2E passed; admin controls added | Cancellation; live DPO network unblock |
+| B2C search → detail → checkout → confirmation | Payment-first flight path implemented; confirmation page is signed-token protected; local-simulation browser E2E passed; admin cancellation/refund controls added | Live DPO network unblock |
 | DPO Pay payment (intent, capture, refund) | Complete from Phase 0; flight checkout now creates intents with a signed booking-access token | Resolve DPO CloudFront 403 for the new-flow live sandbox run |
 | WhatsApp templates | Booking confirmation exists; ticketing template added with confirmation fallback | Approve `ars_booking_ticketing` in WhatsApp |
 | FX rates | Not started | Bank of Botswana hourly ingestion |
 | R2 media/voucher storage | Local/R2 voucher path exists; ticketing generates the voucher | Production bucket + retention |
-| Basic admin console | Bookings list/detail, payment/ledger/audit views, runtime kill switches, and manual ticketing retry/alert resolution added | Cancellation/refund controls |
+| Basic admin console | Bookings list/detail, payment/ledger/audit views, runtime kill switches, manual ticketing retry/alert resolution, and cancellation/refund approval added | Refund retry/reconciliation |
 | Ticketing workflow (§5.19) | Provider order now created after capture; status `confirmed → ticketing → ticketed`; legacy cart-created flight items are skipped; failed attempts can be retried by an admin | Provider idempotency |
-| Cancellation baseline (§5.20) | Refund settlement exists | Provider cancel + policy engine |
+| Cancellation baseline (§5.20) | Single sourced-flight item: provider quote + cancel, fare/provider-quote refund, pending admin approval, non-refundable no-refund path | Multi-item/hotel policies, partial fees, failed-refund repair |
 
 ## Slice 1 — search result → fare detail (done)
 
@@ -189,11 +189,75 @@ Validation completed locally:
   - the retry endpoint returned `ticketed` for the already-ticketed booking
     and wrote an admin `booking.ticketing_retry` audit event.
 
-Remaining in the admin/cancellation slice:
+## Slice 4 — cancellation and refund controls (implemented, locally validated)
 
-- OnArrival cancel adapter and §5.20 cancellation/refund wiring.
-- Cancellation/refund controls in the admin detail view.
-- Provider-native idempotency for order creation (still only the Redis lock).
+What changed:
+
+- `packages/integrations/src/onarrival.ts` now implements
+  `getFlightCancellationQuote` (`GET /v1/flight/orders/{orderId}/cancellation`)
+  and `cancelFlightOrder` (`POST` to the same path). Both have sandbox paths and
+  map the gateway’s eligibility, reason codes, support flag, refund estimate,
+  booking status, and cancellation id. They are exported from
+  `@arrivesuite/integrations` and covered by sandbox and live-envelope tests.
+- `apps/web/lib/cancellation.ts` is the Phase 1 cancellation service. It:
+  - accepts exactly one sourced flight item with a known
+    `flightOffer.refundable` flag; legacy, multi-item, and mixed bookings are
+    escalated to manual handling;
+  - takes the `cancelling:*` and `ticketing:*` Redis locks so a cancellation
+    cannot race a paid ticketing run;
+  - fetches the provider quote and refuses non-cancellable or
+    support-required orders;
+  - computes the refund from the provider quote when present, otherwise from the
+    fare’s `refundable` flag, capped to the remaining captured balance and
+    existing non-failed refunds;
+  - marks the item and booking `cancelled`, sets `cancelledAt`, and writes
+    `booking.transition` / `booking.cancelled` audit events;
+  - requests a pending refund through the shared refund helper. If that request
+    fails after cancellation, it writes
+    `booking.cancellation_refund_failed` and raises a P1
+    `cancellation_refund_failed` alert for manual repair. The existing
+    `resolve-alert` route and admin button now accept that alert kind.
+- `apps/web/lib/refunds.ts` extracts the existing refund creation and balance
+  lock from `POST /api/v1/refunds`; both the public route and cancellation use
+  the same helper, so the one-refund-balance rule is unchanged.
+- `POST /api/v1/admin/bookings/[ref]/cancel` is an admin-only, idempotent route
+  that accepts an optional `reasonCode` (default `CR01`) and `remarks`.
+- The admin booking detail page now shows the fare rule, estimated guest refund,
+  a cancel button, and an approve button for pending refunds. Approval uses the
+  existing `/api/v1/refunds/[id]/approve` route and the signed-in admin id.
+  Refunds are deliberately not sent automatically: cancellation creates a
+  pending refund, and an operator approves it.
+
+Validation completed locally:
+
+- `pnpm lint` and `pnpm typecheck` pass.
+- `pnpm test` passes with the segregated test database and Redis (48 web tests,
+  3 worker tests, 43 integration tests; live provider tests skipped).
+- `packages/integrations` tests pass (43 passed, 2 skipped), including the
+  cancellation quote/cancel contract.
+- DB-backed tests cover:
+  - refundable cancellation → item/booking `cancelled`, pending refund for the
+    paid amount, `booking.cancelled` + `refund.requested` audits, and an
+    idempotent replay;
+  - non-refundable cancellation → `cancelled` with no refund row.
+- Browser validation with `DPO_PAY_SIMULATE=true` and the OnArrival sandbox:
+  - created `ARS-2026-000050` from the refundable Airlink offer, captured BWP
+    7,150.00, ticketed with PNR `ABC123` / ticket `H-77421`;
+  - the admin detail showed “refundable” and a BWP 7,150.00 refund preview;
+  - cancelling moved the booking to `cancelled` and created a pending BWP
+    7,150.00 refund;
+  - approving the refund completed it, moved the booking to `refunded`, updated
+    `refundedCents`, and posted the balanced refund ledger lines;
+  - `ARS-2026-000049` (non-refundable) showed a BWP 0.00 preview and was left
+    ticketed.
+
+Remaining for the full §5.20 engine:
+
+- Multi-item, hotel, and mixed bookings; the standard policy library and
+  cancellation-fee schedules.
+- Provider-native cancellation idempotency, and a reconciliation path for the
+  window where OnArrival cancels but the local transaction fails.
+- A retry/repair UI for refunds that fail provider approval.
 
 ## Open risks
 
@@ -202,6 +266,21 @@ Remaining in the admin/cancellation slice:
   and the item update can still leave a duplicate-order window. Manual
   reconciliation is required, including before an admin uses the ticketing
   retry button.
+- OnArrival cancellation also has no provider-native idempotency key. The
+  cancellation service holds both the cancellation and ticketing locks and
+  stores the provider cancellation id in the item snapshot, but a provider
+  success followed by a local database failure can still require manual
+  reconciliation.
+- Phase 1 cancellation is intentionally limited to one sourced flight item with
+  a known refundable flag and, when a refund is due, one captured payment.
+  Multi-item, hotel, mixed, legacy, and partial-refund cases must use the
+  manual workflow until the full §5.20 policy engine exists.
+- Refunds created by cancellation stay `pending` until an admin approves them.
+  A provider refund failure leaves the booking `cancelled` and the refund
+  `failed`; there is no automatic retry UI yet.
+- The provider’s cancellation quote is treated as authoritative when present.
+  If the live quote and the frozen fare flag disagree, the quote wins, capped to
+  the remaining captured balance.
 - One active payment intent per booking is enforced by the application check
   and migration `0017_one_active_payment_intent.sql` (partial unique index).
 - DPO does not expose refund state via `verifyToken`; refund evidence must come

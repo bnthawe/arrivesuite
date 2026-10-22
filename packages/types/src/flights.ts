@@ -80,3 +80,33 @@ export const flightOrderResponseSchema = z.object({
   pdf: z.string().min(1),
 });
 export type FlightOrderResponse = z.infer<typeof flightOrderResponseSchema>;
+
+// Provider-neutral cancellation contract. Amounts are in minor units so the
+// booking/refund layer never has to guess a provider's decimal convention.
+export interface FlightCancellationReason {
+  code: string;
+  display: string;
+  additionalReason?: boolean;
+}
+
+export interface FlightCancellationQuote {
+  cancellable: boolean;
+  supportRequired: boolean;
+  reasons: FlightCancellationReason[];
+  /** Provider estimate, or null when the gateway did not return one. */
+  estimatedRefundMinor: number | null;
+}
+
+export interface FlightCancellationRequest {
+  orderId: string;
+  code: string;
+  reason: string;
+  additionalReason?: boolean;
+  remarks?: string;
+}
+
+export interface FlightCancellationResult {
+  orderId: string;
+  bookingStatus: string;
+  cancellationId?: string;
+}

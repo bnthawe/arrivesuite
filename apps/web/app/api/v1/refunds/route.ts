@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { auditEvents, db, payments, refunds } from '@arrivesuite/db';
+import { db, refunds } from '@arrivesuite/db';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
+import { createRefundRequest } from '@/lib/refunds';
 
 const requestSchema = z.object({
   paymentId: z.string().uuid(),
@@ -33,54 +34,11 @@ async function handlePost(request: Request) {
   }
   const traceId = traceIdFromRequest(request, parsed.data.traceId);
 
-  // Lock the payment row while calculating the remaining balance. Concurrent
-  // refund requests with different idempotency keys serialize here instead of
-  // both passing the balance check.
-  const result = await db.transaction(async (tx) => {
-    const [payment] = await tx
-      .select()
-      .from(payments)
-      .where(eq(payments.id, parsed.data.paymentId))
-      .limit(1)
-      .for('update');
-    if (!payment || payment.status !== 'captured') {
-      return { ok: false as const, status: 404, error: 'Payment not found or not captured' };
-    }
-
-    const rows = await tx
-      .select({ amountCents: refunds.amountCents, state: refunds.state })
-      .from(refunds)
-      .where(eq(refunds.paymentId, payment.id));
-    const encumbered = rows
-      .filter((r) => r.state !== 'failed')
-      .reduce((sum, r) => sum + r.amountCents, 0);
-    const remaining = payment.amountCents - encumbered;
-    if (parsed.data.amountCents > remaining) {
-      return {
-        ok: false as const,
-        status: 409,
-        error: `Amount exceeds refundable balance of ${remaining}`,
-      };
-    }
-
-    const [refund] = await tx
-      .insert(refunds)
-      .values({
-        paymentId: payment.id,
-        amountCents: parsed.data.amountCents,
-        reason: parsed.data.reason ?? null,
-      })
-      .returning();
-
-    await tx.insert(auditEvents).values({
-      action: 'refund.requested',
-      entityType: 'refund',
-      entityId: refund.id,
-      diff: { paymentId: payment.id, amountCents: refund.amountCents, reason: refund.reason },
-      traceId,
-    });
-
-    return { ok: true as const, refund };
+  const result = await createRefundRequest({
+    paymentId: parsed.data.paymentId,
+    amountCents: parsed.data.amountCents,
+    reason: parsed.data.reason,
+    traceId,
   });
 
   if (!result.ok) {

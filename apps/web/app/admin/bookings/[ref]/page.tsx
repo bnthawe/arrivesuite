@@ -128,6 +128,14 @@ function snapshotValue(snapshot: unknown, key: string): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : '—';
 }
 
+function flightRefundable(snapshot: unknown): boolean | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const offer = (snapshot as Record<string, unknown>).flightOffer;
+  if (!offer || typeof offer !== 'object') return null;
+  const value = (offer as Record<string, unknown>).refundable;
+  return typeof value === 'boolean' ? value : null;
+}
+
 function diffText(diff: unknown): string {
   if (diff === null || diff === undefined) return '';
   try {
@@ -214,6 +222,101 @@ export default function AdminBookingDetailPage() {
     }
   }
 
+  async function cancelFlight() {
+    if (!detail) return;
+    const refundable = flightRefundable(
+      detail.items.find((item) => item.itemType === 'flight')?.snapshot,
+    );
+    const preview = refundable
+      ? Math.max(0, detail.booking.paidCents - detail.booking.refundedCents)
+      : 0;
+    const message = refundable
+      ? `Cancel ${detail.booking.ref}? An estimated refund of ${money(
+          preview,
+          detail.booking.currency,
+        )} will be requested.`
+      : `Cancel ${detail.booking.ref}? This fare is non-refundable; no guest refund will be requested.`;
+    if (!window.confirm(message)) return;
+
+    setBusy(true);
+    setNotice('');
+    try {
+      const res = await fetch(
+        `/api/v1/admin/bookings/${encodeURIComponent(detail.booking.ref)}/cancel`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reasonCode: 'CR01',
+            remarks: 'Admin cancellation',
+          }),
+        },
+      );
+      const body = (await res.json()) as {
+        error?: string;
+        refundError?: string;
+        alreadyCancelled?: boolean;
+        refundAmountCents?: number;
+        refund?: { id: string } | null;
+      };
+      if (!res.ok) {
+        setNotice(body.error ?? 'Cancellation failed.');
+      } else if (body.alreadyCancelled) {
+        setNotice('Booking was already cancelled.');
+      } else {
+        const refundLine = body.refund
+          ? ` Refund of ${money(
+              body.refundAmountCents ?? 0,
+              detail.booking.currency,
+            )} requested; approve it below.`
+          : body.refundAmountCents
+            ? ` Refund of ${money(
+                body.refundAmountCents,
+                detail.booking.currency,
+              )} was due but could not be requested.`
+            : ' No refund is due under the fare rules.';
+        setNotice(
+          `Booking cancelled.${refundLine}${
+            body.refundError ? ` ${body.refundError}` : ''
+          }`,
+        );
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveRefund(refundId: string) {
+    setBusy(true);
+    setNotice('');
+    try {
+      const me = await fetch('/api/v1/auth/me');
+      const meBody = (await me.json()) as { account?: { id?: string } };
+      if (!me.ok || !meBody.account?.id) {
+        setNotice('Could not identify the signed-in admin.');
+        return;
+      }
+      const res = await fetch(`/api/v1/refunds/${encodeURIComponent(refundId)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedBy: meBody.account.id }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        refund?: { state?: string };
+      };
+      if (!res.ok) {
+        setNotice(body.error ?? 'Refund approval failed.');
+      } else {
+        setNotice(`Refund is ${body.refund?.state ?? 'processed'}.`);
+      }
+      if (detail) await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!detail) {
     return (
       <main className="min-h-screen grid place-items-center text-sm">
@@ -230,6 +333,19 @@ export default function AdminBookingDetailPage() {
   const unresolvedTicketingAlert = detail.alerts.some(
     (alert) => alert.kind === 'ticketing_failed' && !alert.resolvedAt,
   );
+  const unresolvedCancellationAlert = detail.alerts.some(
+    (alert) => alert.kind === 'cancellation_refund_failed' && !alert.resolvedAt,
+  );
+  const flightItems = detail.items.filter((item) => item.itemType === 'flight');
+  const cancelStatus = ['confirmed', 'ticketed', 'fulfilled', 'on_hold'].includes(
+    booking.status,
+  );
+  const fareRefundable =
+    flightItems.length === 1 ? flightRefundable(flightItems[0]?.snapshot) : null;
+  const refundPreview = fareRefundable
+    ? Math.max(0, booking.paidCents - booking.refundedCents)
+    : 0;
+  const canCancel = cancelStatus && flightItems.length === 1 && fareRefundable !== null;
 
   return (
     <main className="min-h-screen bg-[#f5f5f5]">
@@ -267,6 +383,15 @@ export default function AdminBookingDetailPage() {
                 Resolve alert
               </button>
             )}
+            {unresolvedCancellationAlert && (
+              <button
+                className={btnGhost}
+                onClick={() => resolveAlert('cancellation_refund_failed')}
+                disabled={busy}
+              >
+                Resolve refund alert
+              </button>
+            )}
           </div>
         </div>
 
@@ -299,6 +424,44 @@ export default function AdminBookingDetailPage() {
             )}
           </div>
         </section>
+
+        <Section title="Cancellation">
+          {booking.status === 'cancelled' || booking.status === 'refunded' ? (
+            <p className="p-4 text-sm text-[#555]">
+              This booking is {booking.status}
+              {booking.cancelledAt ? ` since ${date(booking.cancelledAt)}` : ''}.
+            </p>
+          ) : cancelStatus ? (
+            canCancel ? (
+              <div className="space-y-2 p-4 text-sm">
+                <p>
+                  Fare rules:{' '}
+                  <strong>{fareRefundable ? 'refundable' : 'non-refundable'}</strong>.
+                  Estimated guest refund:{' '}
+                  <strong>{money(refundPreview, booking.currency)}</strong>.
+                </p>
+                <p className="text-xs text-[#777]">
+                  The provider quote is checked before cancelling and may adjust the
+                  final amount. A refund is created for admin approval; it is not sent
+                  automatically.
+                </p>
+                <button className={btn} onClick={cancelFlight} disabled={busy}>
+                  {busy ? 'Working…' : 'Cancel booking'}
+                </button>
+              </div>
+            ) : (
+              <p className="p-4 text-sm text-[#555]">
+                Cancellation needs exactly one flight item with known fare rules. Use
+                the manual refund workflow for this booking.
+              </p>
+            )
+          ) : (
+            <p className="p-4 text-sm text-[#555]">
+              Cancellation is not available from this screen while the booking is{' '}
+              {booking.status}.
+            </p>
+          )}
+        </Section>
 
         <Section title="Items">
           <table className="w-full text-sm">
@@ -409,6 +572,7 @@ export default function AdminBookingDetailPage() {
                   <th className="px-4 py-2">Account / state</th>
                   <th className="px-4 py-2">Amount</th>
                   <th className="px-4 py-2">Created</th>
+                  <th className="px-4 py-2">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -420,6 +584,17 @@ export default function AdminBookingDetailPage() {
                       {money(refund.amountCents, booking.currency)}
                     </td>
                     <td className="px-4 py-2 text-xs text-[#666]">{date(refund.createdAt)}</td>
+                    <td className="px-4 py-2">
+                      {refund.state === 'pending' && (
+                        <button
+                          className={btnGhost}
+                          onClick={() => approveRefund(refund.id)}
+                          disabled={busy}
+                        >
+                          Approve refund
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {detail.ledger.map((entry) => (
@@ -430,6 +605,7 @@ export default function AdminBookingDetailPage() {
                       {money(entry.amountCents, entry.currency)}
                     </td>
                     <td className="px-4 py-2 text-xs text-[#666]">{date(entry.createdAt)}</td>
+                    <td className="px-4 py-2" />
                   </tr>
                 ))}
               </tbody>

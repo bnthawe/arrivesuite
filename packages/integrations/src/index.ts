@@ -11,6 +11,8 @@ export {
   onArrivalConfigFromEnv,
   searchFlightOffers,
   createFlightOrder,
+  getFlightCancellationQuote,
+  cancelFlightOrder,
   mapOnArrivalOffer,
 } from './onarrival';
 export type { GatewayFlightResult, OnArrivalConfig } from './onarrival';

@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { createFlightOrder, mapOnArrivalOffer, searchFlightOffers } from './onarrival';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  cancelFlightOrder,
+  createFlightOrder,
+  getFlightCancellationQuote,
+  mapOnArrivalOffer,
+  searchFlightOffers,
+} from './onarrival';
 
 const request = {
   origin: 'GBE',
@@ -90,4 +96,94 @@ describe('OnArrival flight offers', () => {
     );
     expect(order).toMatchObject({ orderId: 'ord_off_abc123', pnr: 'ABC123' });
   });
+
+  it('returns a sandbox cancellation quote and cancellation', async () => {
+    const cfg = { apiKey: '', baseUrl: 'https://example.invalid', sandbox: true };
+    const quote = await getFlightCancellationQuote('ord_off_abc123', cfg);
+    expect(quote).toMatchObject({
+      cancellable: true,
+      supportRequired: false,
+      reasons: [{ code: 'CR01', display: 'My plans changed' }],
+      estimatedRefundMinor: null,
+    });
+
+    const cancelled = await cancelFlightOrder(
+      { orderId: 'ord_off_abc123', code: 'CR01', reason: 'My plans changed' },
+      cfg,
+    );
+    expect(cancelled).toMatchObject({
+      orderId: 'ord_off_abc123',
+      bookingStatus: 'CANCELLED',
+      cancellationId: 'cancel_ord_off_abc123',
+    });
+  });
+
+  it('maps live cancellation quote and cancel responses', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'success',
+            data: {
+              cancellable: true,
+              supportRequired: false,
+              reasons: [{ code: 'CR01', display: 'My plans changed' }],
+              refund: { totalRefundAmount: 1234.5 },
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            status: 'success',
+            data: {
+              id: 'OAFLT10023451',
+              bookingStatus: 'CANCELLATION_REQUESTED',
+              cancellationTransactionInfos: [{ cancellationId: 'CXL-1' }],
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const cfg = {
+      apiKey: 'test-key',
+      baseUrl: 'https://example.invalid',
+      sandbox: false,
+    };
+
+    const quote = await getFlightCancellationQuote('OAFLT10023451', cfg);
+    expect(quote).toEqual({
+      cancellable: true,
+      supportRequired: false,
+      reasons: [{ code: 'CR01', display: 'My plans changed' }],
+      estimatedRefundMinor: 123450,
+    });
+
+    const cancelled = await cancelFlightOrder(
+      {
+        orderId: 'OAFLT10023451',
+        code: 'CR01',
+        reason: 'My plans changed',
+        remarks: 'Guest request',
+      },
+      cfg,
+    );
+    expect(cancelled).toEqual({
+      orderId: 'OAFLT10023451',
+      bookingStatus: 'CANCELLATION_REQUESTED',
+      cancellationId: 'CXL-1',
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'https://example.invalid/v1/flight/orders/OAFLT10023451/cancellation',
+    );
+    expect(String(fetchMock.mock.calls[1]?.[1]?.body)).toContain('"code":"CR01"');
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });

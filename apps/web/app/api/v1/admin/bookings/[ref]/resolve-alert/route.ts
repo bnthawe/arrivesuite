@@ -7,7 +7,9 @@ import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 
 const resolveSchema = z.object({
-  kind: z.enum(['ticketing_failed', 'ticketing_stuck']).default('ticketing_failed'),
+  kind: z
+    .enum(['ticketing_failed', 'ticketing_stuck', 'cancellation_refund_failed'])
+    .default('ticketing_failed'),
   note: z.string().max(500).optional(),
 });
 
