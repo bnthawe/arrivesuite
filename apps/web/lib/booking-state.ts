@@ -35,7 +35,9 @@ const TRANSITIONS: Record<BookingStatus, readonly BookingStatus[]> = {
   refunded: [],
   expired: [],
   no_show: [],
-  failed: [],
+  // Provider-side ticketing can be retried from the admin console after a
+  // failure; a failed booking can also be refunded without a retry.
+  failed: ['ticketing', 'refunded'],
 };
 
 export function isBookingStatus(value: string): value is BookingStatus {

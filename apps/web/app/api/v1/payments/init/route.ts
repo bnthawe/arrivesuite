@@ -12,6 +12,7 @@ import {
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 import { verifyBookingAccess } from '@/lib/booking-access';
+import { getSystemFlag } from '@/lib/system-flags';
 
 type PaymentIntentRow = typeof paymentIntents.$inferSelect;
 
@@ -141,6 +142,12 @@ async function handlePost(request: Request) {
     .orderBy(desc(paymentIntents.createdAt))
     .limit(1);
   if (activeIntent) return activeIntentResponse(activeIntent);
+
+  // Resuming an existing hosted page above is still allowed while new
+  // payments are paused; only creating a fresh intent is blocked.
+  if (!(await getSystemFlag('payments_enabled'))) {
+    return NextResponse.json({ error: 'New payments are temporarily paused' }, { status: 503 });
+  }
 
   const method = parsed.data.method;
   const reference = `ARS-PAY-${Date.now().toString(36).toUpperCase()}`;

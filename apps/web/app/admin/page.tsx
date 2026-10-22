@@ -172,6 +172,9 @@ export default function AdminPage() {
       <div className="container mx-auto max-w-4xl px-4 py-8">
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-2xl font-bold">Markup admin</h1>
+          <button onClick={() => router.push('/admin/bookings')} className="text-sm text-[#0071C2]">
+            Bookings
+          </button>
           <button onClick={logout} className="ml-auto text-sm text-[#0071C2]">Sign out</button>
         </div>
 

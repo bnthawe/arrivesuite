@@ -14,6 +14,7 @@ import { verifyQuoteToken, type Quote } from '@arrivesuite/pricing';
 import { enqueueReconciliation } from './queues';
 import { getRedis, waitUntilRedisReady } from './redis';
 import { agencyCredit, isAgencyMember } from './agencies';
+import { getSystemFlag } from './system-flags';
 import { agencies } from '@arrivesuite/db';
 
 export interface BookingItemInput {
@@ -168,6 +169,13 @@ export async function createBooking(
         .where(eq(bookingItems.bookingId, existing.id));
       return { ok: true, created: { booking: presentBooking(existing), items: priorItems, replayed: true }, status: 200 };
     }
+  }
+
+  // This check intentionally comes after the replay branch: an idempotent
+  // retry of a booking that already exists must still return that booking
+  // even while new bookings are paused.
+  if (!(await getSystemFlag('bookings_enabled'))) {
+    return { ok: false, status: 503, error: 'New bookings are temporarily paused' };
   }
 
   // Quote enforcement: signature → expiry → single-use → totals match.

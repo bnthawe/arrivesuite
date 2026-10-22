@@ -49,6 +49,7 @@ suite('payment-first flight ticketing', () => {
   let notificationsm: NotificationsModule;
 
   const bookingIds: string[] = [];
+  const bookingRefs: string[] = [];
   const intentIds: string[] = [];
   const snapshotIds: string[] = [];
   const traces: string[] = [];
@@ -75,6 +76,11 @@ suite('payment-first flight ticketing', () => {
         await dbm.db.delete(dbm.payments).where(dz.inArray(dbm.payments.intentId, intentIds));
         await dbm.db.delete(dbm.paymentIntents).where(dz.inArray(dbm.paymentIntents.id, intentIds));
       }
+      if (bookingRefs.length > 0) {
+        await dbm.db
+          .delete(dbm.alertStates)
+          .where(dz.inArray(dbm.alertStates.reference, bookingRefs));
+      }
       if (bookingIds.length > 0) {
         await dbm.db.delete(dbm.bookingItems).where(dz.inArray(dbm.bookingItems.bookingId, bookingIds));
         await dbm.db
@@ -94,7 +100,7 @@ suite('payment-first flight ticketing', () => {
     }
   });
 
-  it('captures, creates the provider order, tickets, and replays idempotently', async () => {
+  async function createPaidBooking(traceId: string) {
     const [account] = await dbm.db
       .select()
       .from(dbm.accounts)
@@ -102,8 +108,6 @@ suite('payment-first flight ticketing', () => {
       .limit(1);
     if (!account) throw new Error('Seed account customer@arrivesuite.com is missing');
 
-    const traceId = randomUUID();
-    traces.push(traceId);
     const created = await bookingm.createBooking({
       accountId: account.id,
       channel: 'web',
@@ -155,9 +159,10 @@ suite('payment-first flight ticketing', () => {
       ],
     });
     expect(created.ok).toBe(true);
-    if (!created.ok) return;
+    if (!created.ok) throw new Error(created.error);
     const booking = created.created.booking;
     bookingIds.push(booking.id);
+    bookingRefs.push(booking.ref.trim());
     if (booking.pricingSnapshotId) snapshotIds.push(booking.pricingSnapshotId);
 
     const [intent] = await dbm.db
@@ -181,6 +186,13 @@ suite('payment-first flight ticketing', () => {
       traceId,
     });
     expect(captured).toMatchObject({ ok: true, replayed: false });
+    return booking;
+  }
+
+  it('captures, creates the provider order, tickets, and replays idempotently', async () => {
+    const traceId = randomUUID();
+    traces.push(traceId);
+    const booking = await createPaidBooking(traceId);
 
     const fulfilled = await ticketingm.fulfillPaidBooking(booking.id, traceId);
     expect(fulfilled).toEqual({ ok: true, status: 'ticketed' });
@@ -237,5 +249,65 @@ suite('payment-first flight ticketing', () => {
     const replay = await ticketingm.fulfillPaidBooking(booking.id, traceId);
     expect(replay).toEqual({ ok: true, status: 'ticketed' });
     expect(integrationsm.createFlightOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a failed ticketing attempt from the admin path', async () => {
+    const traceId = randomUUID();
+    traces.push(traceId);
+    const booking = await createPaidBooking(traceId);
+
+    vi.mocked(integrationsm.createFlightOrder).mockRejectedValueOnce(
+      new Error('provider down'),
+    );
+    const failed = await ticketingm.fulfillPaidBooking(booking.id, traceId);
+    expect(failed).toEqual({ ok: false, error: 'provider down' });
+
+    const [failedBooking] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(failedBooking?.status).toBe('failed');
+
+    const [alert] = await dbm.db
+      .select()
+      .from(dbm.alertStates)
+      .where(
+        dz.and(
+          dz.eq(dbm.alertStates.kind, 'ticketing_failed'),
+          dz.eq(dbm.alertStates.reference, booking.ref.trim()),
+          dz.isNull(dbm.alertStates.resolvedAt),
+        ),
+      )
+      .limit(1);
+    expect(alert).toMatchObject({ kind: 'ticketing_failed', severity: 'P1' });
+
+    const retried = await ticketingm.fulfillPaidBooking(booking.id, traceId, {
+      retryFailed: true,
+    });
+    expect(retried).toEqual({ ok: true, status: 'ticketed' });
+
+    const [ticketed] = await dbm.db
+      .select()
+      .from(dbm.bookings)
+      .where(dz.eq(dbm.bookings.id, booking.id))
+      .limit(1);
+    expect(ticketed?.status).toBe('ticketed');
+
+    const [item] = await dbm.db
+      .select()
+      .from(dbm.bookingItems)
+      .where(dz.eq(dbm.bookingItems.bookingId, booking.id))
+      .limit(1);
+    expect(item?.status).toBe('confirmed');
+    expect(item?.confirmationRef).toBe('ord_off_test');
+
+    const audits = await dbm.db
+      .select()
+      .from(dbm.auditEvents)
+      .where(dz.eq(dbm.auditEvents.traceId, traceId));
+    expect(audits.map((row) => row.action)).toEqual(
+      expect.arrayContaining(['booking.ticketing_failed', 'booking.transition']),
+    );
   });
 });

@@ -7,6 +7,9 @@ on:
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
+    env:
+      # next typegen loads the app graph; the DB client fails fast without it.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/arrivesuite_test
     services:
       postgres:
         image: postgres:16-alpine

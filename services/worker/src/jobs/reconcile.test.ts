@@ -272,7 +272,36 @@ suite('worker reconciliation (database + Redis)', () => {
       .from(dbm.alertStates)
       .where(dz.inArray(dbm.alertStates.reference, [malformed.ref, `payment:${payment.id}`]));
     expect(alerts).toHaveLength(2);
-  }, 20_000);
+
+    // Resolving an alert does not delete it. A recurrence must reopen the
+    // existing row; inserting again would violate the (kind, reference) index.
+    const [resolvedManually] = alerts;
+    await dbm.db
+      .update(dbm.alertStates)
+      .set({ resolvedAt: new Date() })
+      .where(dz.eq(dbm.alertStates.id, resolvedManually.id));
+
+    const secondTraceId = randomUUID();
+    traces.push(secondTraceId);
+    const secondJobId = await queuesm.enqueueReconciliation({ traceId: secondTraceId });
+    await waitForAudit(secondJobId!, secondTraceId);
+
+    const [reopened] = await dbm.db
+      .select()
+      .from(dbm.alertStates)
+      .where(dz.eq(dbm.alertStates.id, resolvedManually.id))
+      .limit(1);
+    expect(reopened?.resolvedAt).toBeNull();
+    expect(reopened?.firstSeenAt.getTime()).toBeGreaterThan(
+      resolvedManually.firstSeenAt.getTime(),
+    );
+
+    const afterSecondSweep = await dbm.db
+      .select()
+      .from(dbm.alertStates)
+      .where(dz.inArray(dbm.alertStates.reference, [malformed.ref, `payment:${payment.id}`]));
+    expect(afterSecondSweep).toHaveLength(2);
+  }, 30_000);
 
   it('serves /health with Redis and the worker ready', async () => {
     const res = await fetch(`http://127.0.0.1:${runtime.port}/health`);

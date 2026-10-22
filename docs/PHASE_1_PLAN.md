@@ -1,11 +1,11 @@
 # Phase 1 implementation plan — sourced flights + B2C
 
-Status: **slice 1 committed; slice 2 implemented and locally validated
-(2026-10-22). A browser run with local DPO simulation reached ticketed +
-voucher + WhatsApp sandbox. The live DPO sandbox API is currently blocked by
-CloudFront HTTP 403 from this environment.**
-Baseline: `master` at `7623541`; slice 2 changes are uncommitted at the time of
-writing.
+Status: **slices 1 and 2 committed; slice 3 admin controls implemented and
+locally validated (2026-10-22). A browser run with local DPO simulation reached
+ticketed + voucher + WhatsApp sandbox. The live DPO sandbox API is currently
+blocked by CloudFront HTTP 403 from this environment.**
+Baseline: slice 2 plus CI fixes at `cce8b6f`; slice 3 changes are committed with
+this document.
 
 ## Provider decision
 
@@ -29,13 +29,13 @@ adapter can be added later without changing booking or pricing code.
 | --- | --- | --- |
 | Flight provider adapter (search, offer, order, cancel) | Search/order exist on OnArrival; offer data enriched; cancel missing | Add cancel + contract tests |
 | Pricing engine v1 with signed quotes | Server-priced search/detail totals; search-scoped opaque offer keys; signed quote enforced by checkout; occupancy pinned to the cached search | FX and tax edge cases |
-| B2C search → detail → checkout → confirmation | Payment-first flight path implemented; confirmation page is signed-token protected; local-simulation browser E2E passed | Admin/cancel; live DPO network unblock |
+| B2C search → detail → checkout → confirmation | Payment-first flight path implemented; confirmation page is signed-token protected; local-simulation browser E2E passed; admin controls added | Cancellation; live DPO network unblock |
 | DPO Pay payment (intent, capture, refund) | Complete from Phase 0; flight checkout now creates intents with a signed booking-access token | Resolve DPO CloudFront 403 for the new-flow live sandbox run |
 | WhatsApp templates | Booking confirmation exists; ticketing template added with confirmation fallback | Approve `ars_booking_ticketing` in WhatsApp |
 | FX rates | Not started | Bank of Botswana hourly ingestion |
 | R2 media/voucher storage | Local/R2 voucher path exists; ticketing generates the voucher | Production bucket + retention |
-| Basic admin console | Markup/agency admin exists | Bookings list/detail + kill switch |
-| Ticketing workflow (§5.19) | Provider order now created after capture; status `confirmed → ticketing → ticketed`; legacy cart-created flight items are skipped | Provider idempotency and admin retry |
+| Basic admin console | Bookings list/detail, payment/ledger/audit views, runtime kill switches, and manual ticketing retry/alert resolution added | Cancellation/refund controls |
+| Ticketing workflow (§5.19) | Provider order now created after capture; status `confirmed → ticketing → ticketed`; legacy cart-created flight items are skipped; failed attempts can be retried by an admin | Provider idempotency |
 | Cancellation baseline (§5.20) | Refund settlement exists | Provider cancel + policy engine |
 
 ## Slice 1 — search result → fare detail (done)
@@ -139,19 +139,69 @@ Still unvalidated:
   401).
 - EU-card 3-D Secure.
 
-## Slice 3 — admin + cancellation
+## Slice 3 — admin controls (done, locally validated)
 
-- Admin bookings list/detail with payment, ledger, and audit timeline.
-- Kill switch for new bookings/payments.
+What changed:
+
+- Migration `0018_system_flags.sql` adds runtime `system_flags` rows
+  (`bookings_enabled`, `payments_enabled`) that default to enabled when a row
+  is missing.
+- `GET /api/v1/admin/flags` lists both switches and
+  `PUT /api/v1/admin/flags` updates one with an admin audit event. The admin
+  bookings page exposes both toggles.
+- `createBooking` rejects new bookings with `503` while `bookings_enabled` is
+  false. `POST /api/v1/payments/init` rejects new payment intents with `503`
+  while `payments_enabled` is false. Both checks run after idempotent replay
+  and active-intent resume, so retries never fail because of a pause.
+- `/admin/bookings` is an admin-only searchable list (ref or customer email,
+  status filter). `/admin/bookings/[ref]` shows the booking, passengers
+  (passport numbers masked), items with PNR/ticket, payment intents and
+  captured payments, refunds, ledger lines, alerts, and the audit timeline.
+- `POST /api/v1/admin/bookings/[ref]/retry-ticketing` retries a failed
+  post-payment ticketing attempt. The state machine now permits
+  `failed → ticketing` and `failed → refunded`; the retry only proceeds when
+  the booking is fully paid. A successful retry resolves the open
+  `ticketing_failed` alert and audits the resolution under the admin actor.
+- `POST /api/v1/admin/bookings/[ref]/resolve-alert` lets an operator close
+  `ticketing_failed` or `ticketing_stuck` after manual investigation.
+- The worker now reopens an existing resolved alert row when the same finding
+  recurs. The `(kind, reference)` unique index means inserting a second row
+  would otherwise crash the sweep after the first resolution.
+
+Validation completed locally:
+
+- `pnpm lint` and `pnpm typecheck` pass; `pnpm test` passes with the segregated
+  test database and Redis (46 web tests, 3 worker tests, 41 integration tests;
+  live provider tests skipped).
+- `pnpm --filter @arrivesuite/web build` passes with only the three pre-existing
+  dynamic-filesystem warnings in `tickets/[ref]`.
+- DB-backed tests cover capture → ticketing → replay and admin retry of a
+  failed ticketing attempt. Worker reconciliation tests cover alert recurrence
+  after a manual resolution.
+- Browser validation as `admin@arrivesuite.com`:
+  - `/admin/bookings` lists `ARS-2026-000049` as ticketed with BWP 5,962.00
+    paid;
+  - `/admin/bookings/ARS-2026-000049` shows the PNR, ticket, captured payment,
+    balanced ledger lines, voucher, and audit timeline;
+  - pausing `bookings_enabled` made `POST /api/v1/bookings` return `503`, and
+    pausing `payments_enabled` made `POST /api/v1/payments/init` return `503`;
+    both were restored to enabled and the paused attempts created no rows;
+  - the retry endpoint returned `ticketed` for the already-ticketed booking
+    and wrote an admin `booking.ticketing_retry` audit event.
+
+Remaining in the admin/cancellation slice:
+
 - OnArrival cancel adapter and §5.20 cancellation/refund wiring.
-- Manual retry/resolution path for `ticketing_failed` alerts.
+- Cancellation/refund controls in the admin detail view.
+- Provider-native idempotency for order creation (still only the Redis lock).
 
 ## Open risks
 
 - OnArrival order creation has no provider-native idempotency key. The Redis
   ticketing lock reduces duplicate orders, but a crash between provider success
   and the item update can still leave a duplicate-order window. Manual
-  reconciliation is required.
+  reconciliation is required, including before an admin uses the ticketing
+  retry button.
 - One active payment intent per booking is enforced by the application check
   and migration `0017_one_active_payment_intent.sql` (partial unique index).
 - DPO does not expose refund state via `verifyToken`; refund evidence must come

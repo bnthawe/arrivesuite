@@ -379,13 +379,28 @@ async function syncAlertStates(findings: Finding[], traceId: string): Promise<st
       .where(and(eq(alertStates.kind, finding.kind), eq(alertStates.reference, finding.reference)))
       .orderBy(desc(alertStates.firstSeenAt))
       .limit(1);
-    if (!existing || existing.resolvedAt) {
+    if (!existing) {
       await db.insert(alertStates).values({
         kind: finding.kind,
         reference: finding.reference,
         severity: finding.severity,
         details: finding.details,
       });
+      continue;
+    }
+    if (existing.resolvedAt) {
+      // The unique index is on (kind, reference), not just open alerts, so a
+      // recurrence must reopen the resolved row rather than insert a new one.
+      await db
+        .update(alertStates)
+        .set({
+          resolvedAt: null,
+          firstSeenAt: new Date(),
+          lastNotifiedAt: null,
+          severity: finding.severity,
+          details: finding.details,
+        })
+        .where(eq(alertStates.id, existing.id));
       continue;
     }
     const ageMs = now - existing.firstSeenAt.getTime();

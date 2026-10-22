@@ -18,6 +18,10 @@ vi.mock('@arrivesuite/db', () => ({
     createdAt: 'payment_intents.created_at',
   },
   auditEvents: {},
+  systemFlags: {
+    key: 'system_flags.key',
+    enabled: 'system_flags.enabled',
+  },
 }));
 
 vi.mock('@/lib/bookings-core', () => ({

@@ -108,6 +108,7 @@ async function generateVoucher(input: {
 export async function fulfillPaidBooking(
   bookingId: string,
   traceId: string,
+  options: { retryFailed?: boolean } = {},
 ): Promise<FulfillResult> {
   const [loaded] = await db.select().from(bookings).where(eq(bookings.id, bookingId)).limit(1);
   if (!loaded) return { ok: false, error: 'Booking not found' };
@@ -119,9 +120,26 @@ export async function fulfillPaidBooking(
   const fulfillable = items.filter(isPostPaymentFlightItem);
   if (fulfillable.length === 0) return { ok: true, status: 'no_action' };
   if (loaded.status === 'ticketed') return { ok: true, status: 'ticketed' };
-  if (loaded.status === 'failed') return { ok: false, error: 'Booking is failed' };
-
-  if (loaded.status === 'confirmed') {
+  if (loaded.status === 'failed') {
+    if (!options.retryFailed) return { ok: false, error: 'Booking is failed' };
+    if (loaded.paidCents < loaded.totalCents) {
+      return { ok: false, error: 'Booking is not fully paid' };
+    }
+    const [claimed] = await db
+      .update(bookings)
+      .set({ status: 'ticketing', updatedAt: new Date() })
+      .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'failed')))
+      .returning();
+    if (claimed) {
+      await db.insert(auditEvents).values({
+        action: 'booking.transition',
+        entityType: 'booking',
+        entityId: bookingId,
+        diff: { from: 'failed', to: 'ticketing', reason: 'admin_ticketing_retry' },
+        traceId,
+      });
+    }
+  } else if (loaded.status === 'confirmed') {
     const [claimed] = await db
       .update(bookings)
       .set({ status: 'ticketing', updatedAt: new Date() })

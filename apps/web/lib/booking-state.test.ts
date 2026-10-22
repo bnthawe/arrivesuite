@@ -28,9 +28,15 @@ describe('booking state machine', () => {
   });
 
   it('treats terminal states as terminal', () => {
-    for (const status of ['refunded', 'expired', 'no_show', 'failed'] as const) {
+    for (const status of ['refunded', 'expired', 'no_show'] as const) {
       expect(allowedTransitions(status)).toHaveLength(0);
     }
+  });
+
+  it('allows a failed ticketing attempt to be retried or refunded', () => {
+    expect(canTransition('failed', 'ticketing')).toBe(true);
+    expect(canTransition('failed', 'refunded')).toBe(true);
+    expect(canTransition('failed', 'confirmed')).toBe(false);
   });
 
   it('recognizes every declared status and rejects unknown values', () => {
