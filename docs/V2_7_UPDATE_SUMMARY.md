@@ -165,3 +165,12 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 ## Approval
 
 Requirements v2.7 are approved for build. The required DPO Pay sandbox cycles are complete, including the optional amount checks. EU-card 3-D Secure remains provider-dependent, and live Paystack sandbox validation awaits a valid test key.
+
+---
+
+## Phase 1 Kickoff (2026-10-22)
+
+Phase 1 started on the shipped OnArrival flight path. Slice 1 adds structured
+fare data, server-priced search results, a server-rendered fare detail page, and
+a signed flight quote endpoint. See `docs/PHASE_1_PLAN.md` for the remaining
+slices (payment-first checkout, ticketing, admin, cancellation) and open risks.

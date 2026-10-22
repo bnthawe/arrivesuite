@@ -21,6 +21,21 @@ interface FlightOffer {
   bags?: string;
   baseMinor?: number;
   imageUrl?: string;
+  origin?: string;
+  destination?: string;
+  departureDate?: string;
+  departureTime?: string;
+  arrivalTime?: string;
+  durationMinutes?: number;
+  stops?: number;
+  airline?: string;
+  fareBrand?: string;
+}
+
+interface FlightPricing {
+  offerId: string;
+  totalCents: number | null;
+  currency: string;
 }
 
 function TileImage({ src, label }: { src?: string; label: string }) {
@@ -71,6 +86,7 @@ export default function SearchPage() {
   const [departureDate, setDepartureDate] = useState('2026-12-10');
   const [hotels, setHotels] = useState<HotelOffer[]>([]);
   const [flights, setFlights] = useState<FlightOffer[]>([]);
+  const [flightPricing, setFlightPricing] = useState<Record<string, FlightPricing>>({});
   const [cartCount, setCartCount] = useState(0);
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
@@ -115,6 +131,8 @@ export default function SearchPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Search failed');
       setFlights(data.offers);
+      const pricing = (data.pricing ?? []) as FlightPricing[];
+      setFlightPricing(Object.fromEntries(pricing.map((p) => [p.offerId, p])));
     } catch (e) {
       setNotice((e as Error).message);
     } finally {
@@ -207,22 +225,47 @@ export default function SearchPage() {
               </div>
             </div>
           ))}
-          {tab === 'flights' && flights.map((f) => (
-            <div key={f.offerId} className={tile}>
-              <TileImage src={f.imageUrl} label={f.flight} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[15px] font-semibold">{f.flight}</div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center border border-[#d0e8d0] rounded-full px-2 py-0.5 text-[11px]">{f.type}</span>
-                  {f.bags && <span className="inline-flex items-center border border-[#e3e3e3] rounded-full px-2 py-0.5 text-[11px]">{f.bags}</span>}
+          {tab === 'flights' && flights.map((f) => {
+            const pricing = flightPricing[f.offerId];
+            const stops = f.stops == null ? null : f.stops === 0 ? 'Direct' : `${f.stops} stop${f.stops === 1 ? '' : 's'}`;
+            return (
+              <div key={f.offerId} className={tile}>
+                <TileImage src={f.imageUrl} label={f.flight} />
+                <div className="flex-1 min-w-0">
+                  <Link
+                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}`}
+                    className="text-[15px] font-semibold hover:text-[#0071C2]"
+                  >
+                    {f.flight}
+                  </Link>
+                  <div className="mt-1 text-xs text-[#666]">
+                    {[f.origin && f.destination ? `${f.origin} → ${f.destination}` : null, f.departureTime && f.arrivalTime ? `${f.departureTime}–${f.arrivalTime}` : null, stops]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="inline-flex items-center border border-[#d0e8d0] rounded-full px-2 py-0.5 text-[11px]">{f.type}</span>
+                    {f.bags && <span className="inline-flex items-center border border-[#e3e3e3] rounded-full px-2 py-0.5 text-[11px]">{f.bags}</span>}
+                    {f.fareBrand && <span className="inline-flex items-center border border-[#e3e3e3] rounded-full px-2 py-0.5 text-[11px]">{f.fareBrand}</span>}
+                  </div>
+                  <Link
+                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}`}
+                    className="mt-2 inline-block text-xs font-semibold text-[#0071C2]"
+                  >
+                    View fare details →
+                  </Link>
+                </div>
+                <div className={priceCol}>
+                  <div className="text-[22px] font-bold">
+                    {pricing?.totalCents != null
+                      ? `${pricing.currency} ${(pricing.totalCents / 100).toFixed(2)}`
+                      : 'Price at checkout'}
+                  </div>
+                  <button className={btn} onClick={() => add('flight', f.offerId)}>Add to cart</button>
                 </div>
               </div>
-              <div className={priceCol}>
-                <div className="text-[22px] font-bold">{f.baseMinor != null ? `BWP ${(f.baseMinor / 100).toFixed(2)}` : '—'}</div>
-                <button className={btn} onClick={() => add('flight', f.offerId)}>Add to cart</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </main>

@@ -21,6 +21,21 @@ export const flightOfferSchema = z.object({
   // Structured base fare in minor units. Sandbox-only: live OnArrival
   // responses carry their own pricing object (mapped at cutover).
   baseMinor: z.number().int().min(0).optional(),
+  // Presentation fields. They are optional because older cached offers and
+  // some gateway responses only carry the human-readable `flight` string.
+  // The search route always fills origin/destination/departureDate from the
+  // request so the detail page has a reliable route even on that fallback.
+  origin: z.string().length(3).optional(),
+  destination: z.string().length(3).optional(),
+  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  departureTime: z.string().max(10).optional(),
+  arrivalTime: z.string().max(10).optional(),
+  durationMinutes: z.number().int().min(0).optional(),
+  stops: z.number().int().min(0).max(10).optional(),
+  airline: z.string().max(100).optional(),
+  fareBrand: z.string().max(100).optional(),
+  ticketingDeadline: z.string().max(64).optional(),
+  refundable: z.boolean().optional(),
 });
 export type FlightOffer = z.infer<typeof flightOfferSchema>;
 

@@ -22,7 +22,7 @@ function authHeaders(cfg: OnArrivalConfig): Record<string, string> {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` };
 }
 
-interface GatewayFlightResult {
+export interface GatewayFlightResult {
   id?: string;
   token?: string;
   api?: { token?: string };
@@ -33,7 +33,38 @@ interface GatewayFlightResult {
   [key: string]: unknown;
 }
 
-function mapOffer(raw: GatewayFlightResult): FlightOffer {
+interface SearchRoute {
+  origin: string;
+  destination: string;
+  departureDate: string;
+}
+
+function stringField(raw: GatewayFlightResult, key: string): string | undefined {
+  const value = raw[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function numberField(raw: GatewayFlightResult, key: string): number | undefined {
+  const value = raw[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function minutesBetween(departure: string, arrival: string): number | undefined {
+  const parse = (value: string): number | null => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(value);
+    if (!match) return null;
+    return Number(match[1]) * 60 + Number(match[2]);
+  };
+  const from = parse(departure);
+  const to = parse(arrival);
+  if (from == null || to == null) return undefined;
+  return to >= from ? to - from : 24 * 60 - from + to;
+}
+
+// OnArrival's gateway is not consistent across fare sources: some results are
+// structured, others only carry the human-readable summary. Parse the summary
+// as a fallback so every cached offer can render a useful detail page.
+export function mapOnArrivalOffer(raw: GatewayFlightResult, route?: SearchRoute): FlightOffer {
   const offerId =
     raw.api && typeof raw.api.token === 'string' && raw.api.token.length > 0
       ? raw.api.token
@@ -41,16 +72,46 @@ function mapOffer(raw: GatewayFlightResult): FlightOffer {
   if (!offerId) {
     throw new ProviderError({ provider: 'onarrival', code: 'provider', message: 'offer without id/token', retryable: false });
   }
-  const type = raw.type === 'NDC' || raw.type === 'GDS' || raw.type === 'LCC' ? raw.type : 'GDS';
+  const flight = stringField(raw, 'flight') ?? JSON.stringify(raw).slice(0, 200);
+  const routeMatch = /([A-Z]{3})\s*(?:→|->|>)\s*([A-Z]{3})/.exec(flight)
+    ?? /\b([A-Z]{3})\s*-\s*([A-Z]{3})\b/.exec(flight);
+  const timeMatch = /\b(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})\b/.exec(flight);
+  const durationMatch = /(\d+)h(?:\s*(\d+)m)?/.exec(flight);
+  const stopMatch = /(\d+)\s*stop/i.exec(flight);
+  const baseMatch = /\bbase\s+([\d.]+)/i.exec(flight);
   const base = typeof raw.price?.base === 'number' ? Math.round(raw.price.base * 100)
     : typeof raw.price?.amount === 'number' ? Math.round(raw.price.amount * 100)
+    : baseMatch ? Math.round(Number(baseMatch[1]) * 100)
     : undefined;
+  const departureTime = stringField(raw, 'departureTime') ?? timeMatch?.[1];
+  const arrivalTime = stringField(raw, 'arrivalTime') ?? timeMatch?.[2];
+  const durationMinutes = numberField(raw, 'durationMinutes')
+    ?? (durationMatch
+      ? Number(durationMatch[1]) * 60 + Number(durationMatch[2] ?? 0)
+      : departureTime && arrivalTime
+        ? minutesBetween(departureTime, arrivalTime)
+        : undefined);
+  const stops = numberField(raw, 'stops')
+    ?? (stopMatch ? Number(stopMatch[1]) : /direct/i.test(flight) ? 0 : undefined);
+  const refundable = typeof raw.refundable === 'boolean' ? raw.refundable : undefined;
+
   return {
     offerId,
-    flight: typeof raw.flight === 'string' ? raw.flight : JSON.stringify(raw).slice(0, 200),
-    type,
+    flight,
+    type: raw.type === 'NDC' || raw.type === 'GDS' || raw.type === 'LCC' ? raw.type : 'GDS',
     bags: typeof raw.bags === 'string' ? raw.bags : undefined,
     baseMinor: base,
+    origin: stringField(raw, 'origin')?.toUpperCase() ?? routeMatch?.[1] ?? route?.origin,
+    destination: stringField(raw, 'destination')?.toUpperCase() ?? routeMatch?.[2] ?? route?.destination,
+    departureDate: stringField(raw, 'departureDate') ?? route?.departureDate,
+    departureTime,
+    arrivalTime,
+    durationMinutes,
+    stops,
+    airline: stringField(raw, 'airline'),
+    fareBrand: stringField(raw, 'fareBrand') ?? stringField(raw, 'cabin'),
+    ticketingDeadline: stringField(raw, 'ticketingDeadline'),
+    refundable,
   };
 }
 
@@ -61,9 +122,60 @@ export async function searchFlightOffers(
   if (cfg.sandbox) {
     return {
       offers: [
-        { offerId: 'off_qr1362', flight: 'QR1362 GAB→JNB 10:15-11:55 Direct 23kg base 5420 trust 88', type: 'NDC', baseMinor: 5420, imageUrl: '/img/wing.svg' },
-        { offerId: 'off_abc123', flight: 'Airlink 4Z402 JNB→MUB 08:00-09:30 Direct 1h30m base 6500 trust 92', type: 'GDS', baseMinor: 6500, imageUrl: '/img/wing.svg' },
-        { offerId: 'off_fn303', flight: 'FastJet FN303 via GBE 1 Stop base 4200 LCC direct', type: 'LCC', bags: 'direct', baseMinor: 4200, imageUrl: '/img/wing.svg' },
+        {
+          offerId: 'off_qr1362',
+          flight: `QR1362 ${req.origin}→${req.destination} 10:15-11:55 Direct 23kg base 5420 trust 88`,
+          type: 'NDC',
+          bags: '23kg checked',
+          baseMinor: 542_000,
+          imageUrl: '/img/wing.svg',
+          origin: req.origin,
+          destination: req.destination,
+          departureDate: req.departureDate,
+          departureTime: '10:15',
+          arrivalTime: '11:55',
+          durationMinutes: 100,
+          stops: 0,
+          airline: 'Qatar Airways',
+          fareBrand: 'Economy Saver',
+          refundable: false,
+        },
+        {
+          offerId: 'off_abc123',
+          flight: `Airlink 4Z402 ${req.origin}→${req.destination} 08:00-09:30 Direct 1h30m base 6500 trust 92`,
+          type: 'GDS',
+          bags: '20kg checked',
+          baseMinor: 650_000,
+          imageUrl: '/img/wing.svg',
+          origin: req.origin,
+          destination: req.destination,
+          departureDate: req.departureDate,
+          departureTime: '08:00',
+          arrivalTime: '09:30',
+          durationMinutes: 90,
+          stops: 0,
+          airline: 'Airlink',
+          fareBrand: 'Economy Flex',
+          refundable: true,
+        },
+        {
+          offerId: 'off_fn303',
+          flight: `FastJet FN303 ${req.origin}→${req.destination} via GBE 1 Stop base 4200 LCC direct`,
+          type: 'LCC',
+          bags: 'Cabin bag only',
+          baseMinor: 420_000,
+          imageUrl: '/img/wing.svg',
+          origin: req.origin,
+          destination: req.destination,
+          departureDate: req.departureDate,
+          departureTime: '12:20',
+          arrivalTime: '15:40',
+          durationMinutes: 200,
+          stops: 1,
+          airline: 'FastJet',
+          fareBrand: 'Economy Light',
+          refundable: false,
+        },
       ],
       medianLatencyMs: 290,
     };
@@ -94,7 +206,12 @@ export async function searchFlightOffers(
     { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, provider: 'onarrival' },
   );
   const results = res.data ?? res.results ?? res.offers ?? [];
-  return { offers: results.map(mapOffer), medianLatencyMs: Date.now() - started };
+  const route = {
+    origin: req.origin,
+    destination: req.destination,
+    departureDate: req.departureDate,
+  };
+  return { offers: results.map((raw) => mapOnArrivalOffer(raw, route)), medianLatencyMs: Date.now() - started };
 }
 
 export async function createFlightOrder(

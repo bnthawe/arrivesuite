@@ -11,8 +11,9 @@ export {
   onArrivalConfigFromEnv,
   searchFlightOffers,
   createFlightOrder,
+  mapOnArrivalOffer,
 } from './onarrival';
-export type { OnArrivalConfig } from './onarrival';
+export type { GatewayFlightResult, OnArrivalConfig } from './onarrival';
 export {
   paystackConfigFromEnv,
   initializePaystackTransaction,
