@@ -1,7 +1,7 @@
 # DPO Pay Sandbox Integration Spike
 
 **Goal:** validate DPO Pay sandbox for the Phase 0 → 1 gate (5+ end-to-end payment cycles)  
-**Status:** 5 of 5 payment cycles complete (2026-10-21); refund, duplicate-verify, app-level callback idempotency, and Paystack contract/error checks complete; a live Paystack sandbox run pending
+**Status:** 5 of 5 required payment cycles plus optional 500.00/1,000.00 BWP cycles complete (2026-10-21); refund, duplicate-verify, app-level DPO return replay, callback idempotency, and Paystack contract/error checks complete; live Paystack sandbox validation blocked by an invalid local test key
 
 **Owner:** Solo developer  
 **Deadline:** Day 3 (T0.6)  
@@ -41,7 +41,7 @@ For local development without credentials:
 NEXT_PUBLIC_BYPASS_DPO_FOR_DEV=true
 ```
 
-The bypass returns deterministic sandbox tokens and never calls the gateway. It must never be enabled in production.
+The bypass returns deterministic local fake tokens and never calls the gateway. It is simulation, not the provider sandbox. Set `DPO_PAY_SIMULATE=false` on the server to override the public bypass during sandbox validation. Live mode never simulates.
 
 ---
 
@@ -185,12 +185,12 @@ If server-to-server callbacks are enabled in the sandbox, verify them the same w
 ## Implementation Checklist
 
 - [x] T0.6.1 Document the DPO Pay v6 XML contract in this spike.
-- [x] T0.6.2 Add local tests for config, create, verify, refund, and sandbox bypass.
-- [x] T0.6.3 Run createToken against the sandbox with 100 BWP (500 and 1,000 BWP still pending).
+- [x] T0.6.2 Add local tests for config, create, verify, refund, and simulation.
+- [x] T0.6.3 Run createToken against the sandbox with 100 BWP and optional 500 and 1,000 BWP amounts.
 - [x] T0.6.4 Run verifyToken before and after payment; `900` unpaid and `000` paid confirmed.
-- [x] T0.6.5 Deliver duplicate return/callback notifications through the app and verify idempotency (T0.3). Sequential and concurrent Paystack webhooks produced one capture; the DPO return handler uses the same atomic capture helper.
+- [x] T0.6.5 Deliver duplicate return/callback notifications through the app and verify idempotency (T0.3). Sequential and concurrent Paystack webhooks produced one capture, and a paid DPO token replayed through the return route produced one capture.
 - [x] T0.6.6 Partial refund and over-refund rejection verified. **DPO does not use `refundRef` as an idempotency key**, so the app prevents duplicate refunds with a route key, a locked balance check, and an atomic approval claim.
-- [x] T0.6.7 Paystack fallback request shape and error mapping covered by mocked tests (`paystack.test.ts`, `http.test.ts`). Live Paystack sandbox still needs credentials.
+- [x] T0.6.7 Paystack fallback request shape and error mapping covered by mocked tests (`paystack.test.ts`, `http.test.ts`). Live Paystack sandbox validation is blocked by an invalid local key (`HTTP 401`).
 - [x] T0.6.8 Record sandbox results in `SANDBOX_RESULTS.md`.
 
 The local harness:
@@ -206,7 +206,7 @@ pnpm --filter @arrivesuite/integrations typecheck
 
 Five or more end-to-end cycles covering:
 
-> **Progress:** 5 of 5 payment cycles complete on 2026-10-21. Refund, duplicate-verify, and app-level duplicate-delivery checks are recorded in `SANDBOX_RESULTS.md`; Paystack fallback shape/error mapping is contract-tested. A live Paystack sandbox run remains.
+> **Progress:** 5 of 5 required cycles plus optional 500.00/1,000.00 BWP cycles complete on 2026-10-21. Refund, duplicate-verify, and app-level DPO return replay checks are recorded in `SANDBOX_RESULTS.md`; Paystack fallback shape/error mapping is contract-tested. Live Paystack sandbox validation is blocked by an invalid local key.
 
 1. Create token (payment intent)
 2. Verify token and reconcile

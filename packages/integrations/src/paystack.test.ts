@@ -9,7 +9,7 @@ import {
 } from './paystack';
 import { ProviderError } from './http';
 
-const liveConfig = { secretKey: 'sk_test_123', sandbox: false };
+const apiConfig = { secretKey: 'sk_test_123', sandbox: true, simulate: false };
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -23,11 +23,33 @@ afterEach(() => {
 });
 
 describe('paystackConfigFromEnv', () => {
-  it('defaults to sandbox without a usable key', () => {
-    expect(paystackConfigFromEnv({})).toEqual({ secretKey: '', sandbox: true });
+  it('defaults to sandbox simulation without a usable key', () => {
+    expect(paystackConfigFromEnv({})).toEqual({
+      secretKey: '',
+      sandbox: true,
+      simulate: true,
+    });
     expect(paystackConfigFromEnv({ PAYSTACK_SECRET_KEY: 'sk_test_xxx' })).toEqual({
       secretKey: 'sk_test_xxx',
       sandbox: true,
+      simulate: true,
+    });
+  });
+
+  it('calls the provider sandbox when a test key and sandbox mode are configured', () => {
+    expect(
+      paystackConfigFromEnv({
+        PAYSTACK_SECRET_KEY: 'sk_test_123',
+        PAYSTACK_MODE: 'sandbox',
+      }),
+    ).toEqual({ secretKey: 'sk_test_123', sandbox: true, simulate: false });
+  });
+
+  it('infers sandbox from a test key when PAYSTACK_MODE is unset', () => {
+    expect(paystackConfigFromEnv({ PAYSTACK_SECRET_KEY: 'sk_test_123' })).toEqual({
+      secretKey: 'sk_test_123',
+      sandbox: true,
+      simulate: false,
     });
   });
 
@@ -35,13 +57,39 @@ describe('paystackConfigFromEnv', () => {
     expect(paystackConfigFromEnv({ PAYSTACK_SECRET_KEY: 'sk_live_123' })).toEqual({
       secretKey: 'sk_live_123',
       sandbox: false,
+      simulate: false,
     });
     expect(
       paystackConfigFromEnv({ PAYSTACK_SECRET_KEY: 'sk_live_123', PAYSTACK_MODE: 'test' }),
-    ).toEqual({ secretKey: 'sk_live_123', sandbox: true });
+    ).toEqual({ secretKey: 'sk_live_123', sandbox: true, simulate: false });
     expect(
       paystackConfigFromEnv({ PAYSTACK_SECRET_KEY: 'sk_live_123', PAYSTACK_MODE: 'live' }),
-    ).toEqual({ secretKey: 'sk_live_123', sandbox: false });
+    ).toEqual({ secretKey: 'sk_live_123', sandbox: false, simulate: false });
+  });
+
+  it('fails closed in live mode without a key or with an explicit simulate flag', () => {
+    expect(paystackConfigFromEnv({ PAYSTACK_MODE: 'live' })).toEqual({
+      secretKey: '',
+      sandbox: false,
+      simulate: false,
+    });
+    expect(
+      paystackConfigFromEnv({
+        PAYSTACK_SECRET_KEY: 'sk_live_123',
+        PAYSTACK_MODE: 'live',
+        PAYSTACK_SIMULATE: 'true',
+      }),
+    ).toEqual({ secretKey: 'sk_live_123', sandbox: false, simulate: false });
+  });
+
+  it('honours an explicit simulation override', () => {
+    expect(
+      paystackConfigFromEnv({
+        PAYSTACK_SECRET_KEY: 'sk_test_123',
+        PAYSTACK_MODE: 'sandbox',
+        PAYSTACK_SIMULATE: 'true',
+      }),
+    ).toEqual({ secretKey: 'sk_test_123', sandbox: true, simulate: true });
   });
 });
 
@@ -66,7 +114,7 @@ describe('initializePaystackTransaction', () => {
         currency: 'BWP',
         reference: 'ref-1',
       },
-      liveConfig,
+      apiConfig,
     );
 
     expect(result).toEqual({
@@ -97,7 +145,7 @@ describe('initializePaystackTransaction', () => {
         currency: 'BWP',
         reference: 'ref-1',
       },
-      { secretKey: '', sandbox: true },
+      { secretKey: '', sandbox: true, simulate: true },
     );
 
     expect(result).toEqual({
@@ -119,7 +167,7 @@ describe('initializePaystackTransaction', () => {
           currency: 'BWP',
           reference: 'ref-1',
         },
-        liveConfig,
+        apiConfig,
       ),
     ).rejects.toMatchObject({
       name: 'ProviderError',
@@ -139,7 +187,7 @@ describe('createPaystackRefund', () => {
 
     const result = await createPaystackRefund(
       { transaction: 'ref-1', amountMinor: 5_000 },
-      liveConfig,
+      apiConfig,
     );
 
     expect(result).toEqual({ status: 'pending', refundId: '123' });
@@ -154,7 +202,7 @@ describe('createPaystackRefund', () => {
       .mockResolvedValue(jsonResponse({ status: true, data: { status: 'processed', id: 456 } }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await createPaystackRefund({ transaction: 'ref-1' }, liveConfig);
+    await createPaystackRefund({ transaction: 'ref-1' }, apiConfig);
 
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(String(init.body))).toEqual({ transaction: 'ref-1' });
@@ -166,7 +214,7 @@ describe('createPaystackRefund', () => {
 
     const result = await createPaystackRefund(
       { transaction: 'ref-1', amountMinor: 5_000 },
-      { secretKey: '', sandbox: true },
+      { secretKey: '', sandbox: true, simulate: true },
     );
 
     expect(result.status).toBe('success');
@@ -178,7 +226,7 @@ describe('createPaystackRefund', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ status: false, data: null })));
 
     await expect(
-      createPaystackRefund({ transaction: 'ref-1' }, liveConfig),
+      createPaystackRefund({ transaction: 'ref-1' }, apiConfig),
     ).rejects.toMatchObject({
       name: 'ProviderError',
       provider: 'paystack',
@@ -193,14 +241,14 @@ describe('Paystack webhooks', () => {
     event: 'charge.success',
     data: { reference: 'ref-1', status: 'success', amount: 10_000, currency: 'BWP' },
   });
-  const signature = createHmac('sha512', liveConfig.secretKey).update(rawBody).digest('hex');
+  const signature = createHmac('sha512', apiConfig.secretKey).update(rawBody).digest('hex');
 
   it('accepts only a valid x-paystack-signature', () => {
-    expect(verifyPaystackWebhook(rawBody, signature, liveConfig)).toBe(true);
-    expect(verifyPaystackWebhook(`${rawBody} `, signature, liveConfig)).toBe(false);
-    expect(verifyPaystackWebhook(rawBody, null, liveConfig)).toBe(false);
-    expect(verifyPaystackWebhook(rawBody, '0'.repeat(128), liveConfig)).toBe(false);
-    expect(verifyPaystackWebhook(rawBody, signature, { secretKey: '', sandbox: true })).toBe(false);
+    expect(verifyPaystackWebhook(rawBody, signature, apiConfig)).toBe(true);
+    expect(verifyPaystackWebhook(`${rawBody} `, signature, apiConfig)).toBe(false);
+    expect(verifyPaystackWebhook(rawBody, null, apiConfig)).toBe(false);
+    expect(verifyPaystackWebhook(rawBody, '0'.repeat(128), apiConfig)).toBe(false);
+    expect(verifyPaystackWebhook(rawBody, signature, { secretKey: '', sandbox: true, simulate: true })).toBe(false);
   });
 
   it('recognises only successful charge events', () => {
@@ -231,7 +279,7 @@ describe('Paystack HTTP error mapping', () => {
 
     const error = await initializePaystackTransaction(
       { email: 'guest@example.com', amountMinor: 10_000, currency: 'BWP', reference: 'ref-1' },
-      liveConfig,
+      apiConfig,
     ).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ProviderError);
@@ -246,7 +294,7 @@ describe('Paystack HTTP error mapping', () => {
 
     const error = await initializePaystackTransaction(
       { email: 'guest@example.com', amountMinor: 10_000, currency: 'BWP', reference: 'ref-1' },
-      liveConfig,
+      apiConfig,
     ).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ProviderError);

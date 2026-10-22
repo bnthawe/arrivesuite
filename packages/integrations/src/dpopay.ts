@@ -6,7 +6,12 @@ export interface DpoConfig {
   productServiceId: string;
   serviceServiceId: string;
   baseUrl: string;
+  // Provider environment. Sandbox still calls the real DPO sandbox gateway.
   sandbox: boolean;
+  // Local fake responses only. This is separate from the provider environment.
+  // Optional for callers written before the split; when omitted, sandbox
+  // retains the old simulate-in-sandbox behaviour.
+  simulate?: boolean;
 }
 
 export function dpoConfigFromEnv(env: NodeJS.ProcessEnv = process.env): DpoConfig {
@@ -14,13 +19,24 @@ export function dpoConfigFromEnv(env: NodeJS.ProcessEnv = process.env): DpoConfi
   // names (DPO_COMPANY_TOKEN / DPO_SERVICE_TYPE) used in production.
   const companyToken = env.DPO_PAY_COMPANY_TOKEN ?? env.DPO_COMPANY_TOKEN ?? '';
   const mode = env.DPO_PAY_MODE;
-  const bypass = env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true';
+  const isLive = mode === 'live';
+  const hasUsableToken = Boolean(companyToken) && !companyToken.includes('xxx');
+  const explicitSimulate = env.DPO_PAY_SIMULATE;
+  // Live mode always calls the provider. A stray simulate flag or public dev
+  // bypass must never fake a real payment.
+  const simulate = isLive
+    ? false
+    : explicitSimulate !== undefined
+      ? explicitSimulate === 'true'
+      : env.NEXT_PUBLIC_BYPASS_DPO_FOR_DEV === 'true' || !hasUsableToken;
   return {
     companyToken,
     productServiceId: env.DPO_PAY_PRODUCT_SERVICE_ID ?? env.DPO_SERVICE_TYPE ?? '',
     serviceServiceId: env.DPO_PAY_SERVICE_SERVICE_ID ?? '',
     baseUrl: env.DPO_PAY_BASE_URL ?? 'https://secure.3gdirectpay.com/API/v6/',
-    sandbox: bypass || (mode ? mode !== 'live' : !companyToken || companyToken.includes('xxx')),
+    // Default to sandbox unless live is explicitly requested.
+    sandbox: mode ? mode !== 'live' : true,
+    simulate,
   };
 }
 
@@ -76,7 +92,7 @@ export async function createDpoToken(
   req: DpoCreateTokenRequest,
   cfg = dpoConfigFromEnv(),
 ): Promise<DpoCreateTokenResponse> {
-  if (cfg.sandbox) {
+  if (cfg.simulate ?? cfg.sandbox) {
     const ref = req.companyRef.replace(/[^A-Za-z0-9-]/g, '').slice(0, 40);
     return { transToken: `dpo-sandbox-${ref}`, transRef: `DPOST${Date.now().toString(36).toUpperCase()}` };
   }
@@ -129,7 +145,7 @@ export async function refundDpoToken(
   req: DpoRefundRequest,
   cfg = dpoConfigFromEnv(),
 ): Promise<void> {
-  if (cfg.sandbox) return;
+  if (cfg.simulate ?? cfg.sandbox) return;
   const xml =
     `<?xml version="1.0" encoding="utf-8"?><API3G>` +
     `<Request>refundToken</Request>` +
@@ -161,7 +177,7 @@ export async function verifyDpoToken(
   transToken: string,
   cfg = dpoConfigFromEnv(),
 ): Promise<DpoVerifyResult> {
-  if (cfg.sandbox) {
+  if (cfg.simulate ?? cfg.sandbox) {
     return {
       paid: transToken.startsWith('dpo-sandbox-'),
       resultCode: '000',

@@ -30,6 +30,19 @@ values remain in the ignored `.env.local`.
 - CI uses ephemeral PostgreSQL credentials created by the GitHub Actions service
   container, not real provider keys.
 
+## Sandbox vs simulation
+
+- `DPO_PAY_MODE` and `PAYSTACK_MODE` select the provider environment. `sandbox`
+  calls the provider test API; `live` calls production.
+- `DPO_PAY_SIMULATE` and `PAYSTACK_SIMULATE` select local fake responses. They
+  are separate from the provider environment.
+- Leave the simulate flags unset. Sandbox mode calls the provider when usable
+  credentials are present and falls back to local fakes when they are missing.
+  Live mode never simulates, even if a simulate flag or public development
+  bypass is present.
+- Set a simulate flag to `true` only for local work that must not reach a
+  provider.
+
 ## Verification
 
 ```powershell

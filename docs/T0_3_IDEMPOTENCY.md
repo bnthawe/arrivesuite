@@ -71,8 +71,8 @@ through provider callbacks:
 
 ## End-to-end evidence
 
-The local `arrivesuite_test` database and Redis DB 1 were used; Paystack was in
-sandbox mode. The Paystack callback and DPO return handler share
+The local `arrivesuite_test` database and Redis DB 1 were used. Paystack signed
+webhook deliveries and the DPO return handler share
 `capturePaymentByProviderRef`.
 
 | Scenario | Result |
@@ -81,6 +81,8 @@ sandbox mode. The Paystack callback and DPO return handler share
 | Booking: same key, different body | `409 idempotency_key_conflict` |
 | Payment callback: sequential duplicate | First returned a `paymentId`; second returned `replayed: true` |
 | Payment callback: two concurrent deliveries | One capture and one replay; one `payments` row |
+| DPO return: same paid token twice | `200` with `paymentId`, then `200` with `replayed: true`; one `payments` row |
+| DPO booking after capture | `confirmed`; `paid_cents = 10000`; one `booking.transition` and one `payment.captured` audit row |
 | Booking paid amount after duplicate callback | `10000`, not `20000` |
 | Refund request: same key twice | `201`, then replay of the same refund |
 | Refund request: two concurrent 60.00 requests on a 100.00 payment | One `201`; one `409` `Amount exceeds refundable balance of 4000`; one refund row |
@@ -97,5 +99,7 @@ sandbox mode. The Paystack callback and DPO return handler share
   second delivery. Payment/provider calls are bounded well below that.
 - If Redis is unavailable, writes with an idempotency key fail closed. This is
   intentional for payment safety but means Redis is on the critical path.
-- The live Paystack sandbox run still needs credentials. The contract and error
-  mapping are covered by mocked tests.
+- Live Paystack sandbox validation is still blocked: the local `sk_test_...` key
+  returns `HTTP 401` from Paystack. The contract and error mapping are covered by
+  mocked tests; a valid test key is still required for a real initialize/refund
+  run.

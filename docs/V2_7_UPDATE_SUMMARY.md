@@ -2,7 +2,7 @@
 
 **Requirements update:** 2026-10-13  
 **Ported to `master`:** 2026-10-21  
-**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 payment cycles complete (2026-10-21); app-level idempotency, the core booking state machine, the CI critical-path test gate, and the secrets cleanup are implemented and verified; a live Paystack sandbox run remains
+**Status:** Requirements merged; Phase 0 unblocked; DPO Pay sandbox validation has 5 of 5 required cycles plus 500.00 and 1,000.00 BWP optional cycles complete (2026-10-21); app-level DPO return replay, idempotency, the core booking state machine, the CI critical-path test gate, and the secrets cleanup are implemented and verified; live Paystack sandbox validation is blocked by an invalid local test key; EU-card 3-D Secure remains provider-dependent
 
 ---
 
@@ -52,8 +52,8 @@ Finance Ops workflow:
 - CI green
 - hello-world booking works
 - worker processes jobs
-- DPO Pay sandbox: 5+ payment cycles (create, verify, return, refund, idempotency)
-- Paystack fallback request shape/error mapping contract-tested (live sandbox pending credentials)
+- DPO Pay sandbox: 5+ payment cycles (create, verify, return, refund, idempotency), including optional 500.00 and 1,000.00 BWP amounts
+- Paystack fallback request shape/error mapping contract-tested (live sandbox pending a valid test key)
 
 ---
 
@@ -81,9 +81,9 @@ The spike artifacts are in `packages/integrations/src/dpo-pay/`:
 
 - `SPIKE.md` — sandbox plan and exact XML request/response shapes
 - `README.md` — credentials, commands, acceptance criteria
-- `client.test.ts` — local mocked tests for config, create, verify, refund, and sandbox bypass
+- `client.test.ts` — local mocked tests for config, create, verify, refund, and simulation
 - `live.test.ts` — opt-in live sandbox tests, skipped unless `DPO_LIVE_SANDBOX=1`
-- `SANDBOX_RESULTS.md` — evidence for the first 100 BWP create/pay/verify cycle
+- `SANDBOX_RESULTS.md` — evidence for five 100 BWP cycles, optional 500/1,000 BWP amounts, refunds, and the app-level return replay
 
 Do not add a separate JSON/axios DPO client. DPO Pay v6 is XML; the existing client is the integration point used by `apps/web`.
 
@@ -96,7 +96,9 @@ pnpm --filter @arrivesuite/integrations typecheck
 
 The default tests mock `fetch` and run without credentials. Live sandbox cycles require DPO Pay test credentials and are opt-in via `DPO_LIVE_SANDBOX=1`.
 
-**Sandbox progress:** 5 of 5 payment cycles complete. Each 100 BWP Visa payment returned `Result 900` before payment and `Result 000` / `Transaction Paid` after. Duplicate `verifyToken` calls are stable. Partial refunds succeeded, and a third 50.00 refund on a 100.00 payment was rejected with `999`. **DPO does not enforce `refundRef` idempotency**, so ArriveSuite prevents duplicate refunds with a route key, a locked balance check, and an atomic approval claim. Duplicate and concurrent Paystack webhooks produced one capture and one payment row; booking duplicate delivery replayed the original response. Full evidence is in `packages/integrations/src/dpo-pay/SANDBOX_RESULTS.md` and `docs/T0_3_IDEMPOTENCY.md`.
+**Sandbox progress:** 5 of 5 required 100 BWP cycles complete, plus optional 500.00 and 1,000.00 BWP cycles. Each payment returned `Result 900` before payment and `Result 000` / `Transaction Paid` after. Duplicate `verifyToken` calls are stable. Partial refunds succeeded, and a third 50.00 refund on a 100.00 payment was rejected with `999`. **DPO does not enforce `refundRef` idempotency**, so ArriveSuite prevents duplicate refunds with a route key, a locked balance check, and an atomic approval claim. A paid DPO token replayed through the app return route produced one payment: the first call returned `paymentId`, the replay returned `replayed: true`, the booking became `confirmed`, and two audit rows were written. Duplicate and concurrent Paystack webhooks produced one capture and one payment row. Live Paystack initialize is still blocked because the local `sk_test_...` key returns `HTTP 401`. Full evidence is in `packages/integrations/src/dpo-pay/SANDBOX_RESULTS.md` and `docs/T0_3_IDEMPOTENCY.md`.
+
+`DPO_PAY_MODE`/`PAYSTACK_MODE` select the provider environment; `DPO_PAY_SIMULATE`/`PAYSTACK_SIMULATE` select local fake responses. Missing sandbox credentials default to simulation, and live mode never simulates.
 
 ---
 
@@ -108,10 +110,10 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 | T0.2 — Audit | 2 days | Yes | Done: request-level audit on guarded writes, cached actor resolution, domain-route opt-outs (`docs/T0_2_AUDIT.md`) |
 | T0.3 - Idempotency | 1 day | Yes | Done: Redis response cache (24h), atomic capture/refund claims, 37 route files covered (`docs/T0_3_IDEMPOTENCY.md`) |
 | T0.4 - State machine | 2 days | Yes | Done: §9.1 states/transition map, `pending_payment` backfill, atomic capture transition, no-show guard (`docs/T0_4_STATE_MACHINE.md`) |
-| T0.5 - Tests | 3 days | Yes | Done: unit tests, DB-backed booking/capture critical path, PostgreSQL service and `pnpm test` in CI (`docs/T0_5_TESTS.md`); browser/refund E2E pending |
-| T0.6 — DPO Pay sandbox | 2–3 days | Phase 1 gate | Can run in parallel with T0.1–T0.5 |
+| T0.5 - Tests | 3 days | Yes | Done: unit tests, DB-backed booking/capture critical path, PostgreSQL service and `pnpm test` in CI (`docs/T0_5_TESTS.md`); 3-D Secure browser E2E remains provider-dependent |
+| T0.6 — DPO Pay sandbox | 2–3 days | Phase 1 gate | Done for DPO: 5 required + 2 optional cycles, refunds, app return replay. EU 3-D Secure test card unavailable; live Paystack validation blocked by an invalid local key |
 
-**Total:** ~8–9 days across parallel tracks. T0.6 must complete before Phase 1 kickoff.
+**Total:** ~8–9 days across parallel tracks. DPO’s required T0.6 cycles are complete before Phase 1 kickoff; the 3-D Secure and Paystack live checks remain open risks.
 
 ---
 
@@ -131,8 +133,8 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 - CI green (lint, typecheck, tests)
 - hello-world booking works
 - worker processes jobs
-- DPO Pay: 5+ sandbox cycles
-- Paystack fallback request shape/error mapping contract-tested (live sandbox pending credentials)
+- DPO Pay: 5+ sandbox cycles, including the 500.00 and 1,000.00 BWP checks
+- Paystack fallback request shape/error mapping contract-tested (live sandbox pending a valid test key)
 
 → **Phase 1 kickoff (Day 7)**
 
@@ -162,4 +164,4 @@ The default tests mock `fetch` and run without credentials. Live sandbox cycles 
 
 ## Approval
 
-Requirements v2.7 are approved for build. DPO Pay sandbox validation remains an explicit Phase 0 → 1 gate; it is not yet complete.
+Requirements v2.7 are approved for build. The required DPO Pay sandbox cycles are complete, including the optional amount checks. EU-card 3-D Secure remains provider-dependent, and live Paystack sandbox validation awaits a valid test key.

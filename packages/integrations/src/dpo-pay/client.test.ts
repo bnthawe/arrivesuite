@@ -14,6 +14,7 @@ const config: DpoConfig = {
   serviceServiceId: 'service-service-id',
   baseUrl: 'https://secure.3gdirectpay.com/API/v6/',
   sandbox: false,
+  simulate: false,
 };
 
 const request = {
@@ -53,29 +54,71 @@ describe('dpoConfigFromEnv', () => {
     expect(cfg.serviceServiceId).toBe('service-1');
     expect(cfg.baseUrl).toBe('https://example.test/API/v6/');
     expect(cfg.sandbox).toBe(false);
+    expect(cfg.simulate).toBe(false);
   });
 
-  it('defaults to sandbox when the company token is absent', () => {
+  it('defaults to sandbox simulation when the company token is absent', () => {
     const cfg = dpoConfigFromEnv({} as NodeJS.ProcessEnv);
     expect(cfg.sandbox).toBe(true);
+    expect(cfg.simulate).toBe(true);
   });
 
-  it('forces sandbox when the development bypass is enabled', () => {
+  it('calls the real sandbox gateway in sandbox mode with a usable token', () => {
     const cfg = dpoConfigFromEnv({
-      DPO_PAY_COMPANY_TOKEN: 'live-token',
-      DPO_PAY_MODE: 'live',
+      DPO_PAY_COMPANY_TOKEN: 'sandbox-token',
+      DPO_PAY_MODE: 'sandbox',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.sandbox).toBe(true);
+    expect(cfg.simulate).toBe(false);
+  });
+
+  it('simulates in sandbox mode when the development bypass is enabled', () => {
+    const cfg = dpoConfigFromEnv({
+      DPO_PAY_COMPANY_TOKEN: 'sandbox-token',
+      DPO_PAY_MODE: 'sandbox',
       NEXT_PUBLIC_BYPASS_DPO_FOR_DEV: 'true',
     } as NodeJS.ProcessEnv);
     expect(cfg.sandbox).toBe(true);
+    expect(cfg.simulate).toBe(true);
+  });
+
+  it('never simulates in live mode, even with a bypass or explicit flag', () => {
+    const cfg = dpoConfigFromEnv({
+      DPO_PAY_COMPANY_TOKEN: 'live-token',
+      DPO_PAY_MODE: 'live',
+      DPO_PAY_SIMULATE: 'true',
+      NEXT_PUBLIC_BYPASS_DPO_FOR_DEV: 'true',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.sandbox).toBe(false);
+    expect(cfg.simulate).toBe(false);
+  });
+
+  it('fails closed in live mode when the company token is absent', () => {
+    const cfg = dpoConfigFromEnv({
+      DPO_PAY_MODE: 'live',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.sandbox).toBe(false);
+    expect(cfg.simulate).toBe(false);
+  });
+
+  it('lets the server-only simulate flag override the public dev bypass', () => {
+    const cfg = dpoConfigFromEnv({
+      DPO_PAY_COMPANY_TOKEN: 'sandbox-token',
+      DPO_PAY_MODE: 'sandbox',
+      DPO_PAY_SIMULATE: 'false',
+      NEXT_PUBLIC_BYPASS_DPO_FOR_DEV: 'true',
+    } as NodeJS.ProcessEnv);
+    expect(cfg.sandbox).toBe(true);
+    expect(cfg.simulate).toBe(false);
   });
 });
 
 describe('createDpoToken', () => {
-  it('returns a sandbox token without calling the gateway', async () => {
+  it('returns a simulated token without calling the gateway', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await createDpoToken(request, { ...config, sandbox: true });
+    const result = await createDpoToken(request, { ...config, sandbox: true, simulate: true });
 
     expect(result.transToken).toMatch(/^dpo-sandbox-/);
     expect(result.transRef).toMatch(/^DPOST/);
@@ -153,12 +196,12 @@ describe('verifyDpoToken', () => {
     expect(result.resultExplanation).toBe('Transaction not paid yet');
   });
 
-  it('returns a sandbox verification without calling the gateway', async () => {
+  it('returns a simulated verification without calling the gateway', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    const paid = await verifyDpoToken('dpo-sandbox-ARS-1', { ...config, sandbox: true });
-    const unpaid = await verifyDpoToken('some-other-token', { ...config, sandbox: true });
+    const paid = await verifyDpoToken('dpo-sandbox-ARS-1', { ...config, sandbox: true, simulate: true });
+    const unpaid = await verifyDpoToken('some-other-token', { ...config, sandbox: true, simulate: true });
 
     expect(paid.paid).toBe(true);
     expect(unpaid.paid).toBe(false);

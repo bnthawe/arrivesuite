@@ -8,7 +8,8 @@ const config: DpoConfig = {
   productServiceId: process.env.DPO_PAY_PRODUCT_SERVICE_ID ?? '',
   serviceServiceId: process.env.DPO_PAY_SERVICE_SERVICE_ID ?? '',
   baseUrl: process.env.DPO_PAY_BASE_URL ?? 'https://secure.3gdirectpay.com/API/v6/',
-  sandbox: false,
+  sandbox: true,
+  simulate: false,
 };
 
 describe.skipIf(!enabled)('DPO Pay live sandbox (T0.6)', () => {
@@ -52,7 +53,7 @@ describe.skipIf(!enabled)('DPO Pay live sandbox (T0.6)', () => {
       expect(verification.paid).toBe(true);
       expect(verification.resultCode).toBe('000');
       expect(verification.resultExplanation.toLowerCase()).toContain('paid');
-      expect(verification.amountMajor).toBe('100.00');
+      expect(verification.amountMajor).toBe(process.env.DPO_LIVE_PAID_AMOUNT ?? '100.00');
       expect(verification.currency).toBe('BWP');
     },
     60_000,
