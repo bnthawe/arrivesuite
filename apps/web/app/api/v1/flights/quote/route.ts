@@ -50,18 +50,24 @@ export async function POST(request: Request) {
     );
   }
 
-  const [priced] = await applyRouteMarkup(
-    [
-      {
-        itemType: 'flight',
-        itemRef: offer.offerId,
-        netCents: offer.baseMinor,
-        origin: offer.origin ?? cached.route?.origin,
-        destination: offer.destination ?? cached.route?.destination,
-      },
-    ],
-    'b2c',
-  );
+  let priced: Awaited<ReturnType<typeof applyRouteMarkup>>[number];
+  try {
+    [priced] = await applyRouteMarkup(
+      [
+        {
+          itemType: 'flight',
+          itemRef: offer.offerId,
+          netCents: offer.baseMinor,
+          origin: offer.origin ?? cached.route?.origin,
+          destination: offer.destination ?? cached.route?.destination,
+        },
+      ],
+      'b2c',
+    );
+  } catch (err) {
+    console.error('[flights.quote] pricing failed', err);
+    return NextResponse.json({ error: 'Pricing temporarily unavailable' }, { status: 503 });
+  }
 
   const { token, quote } = mintQuote(
     [

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { randomUUID } from 'node:crypto';
 import { getCachedOffer } from '@/lib/prebooks';
 import { applyRouteMarkup } from '@/lib/route-pricing';
 import FlightOfferActions from './actions';
@@ -8,6 +9,8 @@ export const metadata: Metadata = {
   title: 'Flight details — ArriveSuite',
   description: 'Review your fare before continuing to checkout.',
 };
+
+export const dynamic = 'force-dynamic';
 
 function money(currency: string, cents: number): string {
   return `${currency} ${(cents / 100).toFixed(2)}`;
@@ -66,6 +69,22 @@ export default async function FlightOfferPage({
   const offerId = typeof query.offerId === 'string' ? query.offerId : '';
   if (!offerId) return <MissingOffer />;
 
+  const fallbackAdultsRaw =
+    typeof query.adults === 'string' ? Number.parseInt(query.adults, 10) : 1;
+  const fallbackAdults = Number.isFinite(fallbackAdultsRaw)
+    ? Math.min(9, Math.max(1, fallbackAdultsRaw))
+    : 1;
+  const fallbackChildrenRaw =
+    typeof query.children === 'string' ? Number.parseInt(query.children, 10) : 0;
+  const fallbackChildren = Number.isFinite(fallbackChildrenRaw)
+    ? Math.min(9 - fallbackAdults, Math.max(0, fallbackChildrenRaw))
+    : 0;
+  const fallbackInfantsRaw =
+    typeof query.infants === 'string' ? Number.parseInt(query.infants, 10) : 0;
+  const fallbackInfants = Number.isFinite(fallbackInfantsRaw)
+    ? Math.min(9 - fallbackAdults - fallbackChildren, Math.max(0, fallbackInfantsRaw))
+    : 0;
+
   let cached: Awaited<ReturnType<typeof getCachedOffer>>;
   try {
     cached = await getCachedOffer(offerId);
@@ -92,6 +111,14 @@ export default async function FlightOfferPage({
   const origin = offer.origin ?? cached.route?.origin;
   const destination = offer.destination ?? cached.route?.destination;
   const currency = cached.currency;
+  // The fare is priced for the search occupancy stored in the cache. URL
+  // counts are only a fallback for old offers; they cannot change the price.
+  const adults = cached.occupancy?.adults ?? fallbackAdults;
+  const children = cached.occupancy?.children ?? fallbackChildren;
+  const infants = cached.occupancy?.infants ?? fallbackInfants;
+  const totalTravellers = adults + children + infants;
+  const checkoutId = randomUUID();
+  const checkoutHref = `/flights/checkout?offerId=${encodeURIComponent(offerId)}&adults=${adults}&children=${children}&infants=${infants}&checkoutId=${checkoutId}`;
 
   let price: { netCents: number; markupCents: number; totalCents: number } | null = null;
   if (offer.baseMinor != null) {
@@ -202,7 +229,7 @@ export default async function FlightOfferPage({
 
           <aside className="h-fit rounded-[16px] border border-[#e3e3e3] bg-white p-5 md:sticky md:top-4">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-[#666]">
-              Total for 1 traveller
+              Total for {totalTravellers} traveller{totalTravellers === 1 ? '' : 's'}
             </p>
             <div className="mt-2 text-3xl font-bold">
               {price ? money(currency, price.totalCents) : 'Price on request'}
@@ -218,7 +245,11 @@ export default async function FlightOfferPage({
             )}
 
             <div className="mt-5">
-              <FlightOfferActions offerId={offer.offerId} disabled={!price} />
+              <FlightOfferActions
+                offerId={offerId}
+                checkoutHref={checkoutHref}
+                disabled={!price}
+              />
             </div>
           </aside>
         </div>

@@ -1,15 +1,28 @@
 import { z } from 'zod';
 import { currencyCodeSchema, guestInfoSchema } from './money';
 
-export const flightSearchRequestSchema = z.object({
-  origin: z.string().length(3).transform((s) => s.toUpperCase()),
-  destination: z.string().length(3).transform((s) => s.toUpperCase()),
-  departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  adults: z.number().int().min(1).max(9),
-  children: z.array(z.number().int().min(2).max(17)).default([]),
-  infants: z.number().int().min(0).max(9).default(0),
-  currency: currencyCodeSchema,
-});
+const isoDateString = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
+  }, 'Invalid calendar date');
+
+export const flightSearchRequestSchema = z
+  .object({
+    origin: z.string().length(3).transform((s) => s.toUpperCase()),
+    destination: z.string().length(3).transform((s) => s.toUpperCase()),
+    departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    adults: z.number().int().min(1).max(9),
+    children: z.array(z.number().int().min(2).max(17)).max(8).default([]),
+    infants: z.number().int().min(0).max(9).default(0),
+    currency: currencyCodeSchema,
+  })
+  .refine((value) => value.adults + value.children.length + value.infants <= 9, {
+    message: 'Total travellers cannot exceed 9',
+    path: ['adults'],
+  });
 export type FlightSearchRequest = z.infer<typeof flightSearchRequestSchema>;
 
 export const flightOfferSchema = z.object({
@@ -42,6 +55,13 @@ export type FlightOffer = z.infer<typeof flightOfferSchema>;
 export const passengerSchema = z.object({
   type: z.enum(['ADT', 'CHD', 'INF']),
   age: z.number().int().min(0).max(120).optional(),
+  // Names are required by the airline order API. They stay optional on the
+  // base schema so older callers that only pass type/age keep working.
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  dateOfBirth: isoDateString.optional(),
+  passportNumber: z.string().max(50).optional(),
+  nationality: z.string().length(2).optional(),
 });
 export type Passenger = z.infer<typeof passengerSchema>;
 

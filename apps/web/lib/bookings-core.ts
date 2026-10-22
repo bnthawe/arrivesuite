@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import {
   auditEvents,
   accounts,
+  bookingGuests,
   bookingItems,
   bookings,
   db,
@@ -11,7 +12,7 @@ import {
 } from '@arrivesuite/db';
 import { verifyQuoteToken, type Quote } from '@arrivesuite/pricing';
 import { enqueueReconciliation } from './queues';
-import { getRedis } from './redis';
+import { getRedis, waitUntilRedisReady } from './redis';
 import { agencyCredit, isAgencyMember } from './agencies';
 import { agencies } from '@arrivesuite/db';
 
@@ -23,6 +24,27 @@ export interface BookingItemInput {
   netCents: number;
   markupCents?: number;
   taxCents?: number;
+  // Server-owned snapshot metadata (for example the frozen flight offer used
+  // for post-payment ticketing). Never taken from the client unvalidated.
+  snapshot?: Record<string, unknown>;
+  startDate?: Date;
+  endDate?: Date;
+  adults?: number;
+  children?: number;
+  infants?: number;
+}
+
+export interface BookingGuestInput {
+  guestType: 'ADT' | 'CHD' | 'INF';
+  firstName: string;
+  lastName: string;
+  dateOfBirth?: string | null;
+  passportNumber?: string | null;
+  passportExpiry?: string | null;
+  nationality?: string | null;
+  email?: string | null;
+  phoneE164?: string | null;
+  isLead?: boolean;
 }
 
 export interface CreateBookingInput {
@@ -30,6 +52,7 @@ export interface CreateBookingInput {
   channel: 'web' | 'whatsapp' | 'api' | 'backoffice';
   currency: string;
   items: BookingItemInput[];
+  guests?: BookingGuestInput[];
   traceId?: string;
   idempotencyKey?: string | null;
   // Signed quote enforcement (ADR-0012). When present the quote's frozen
@@ -127,6 +150,26 @@ export async function createBooking(
   const taxCents = itemsWithTotals.reduce((s, i) => s + i.taxCents, 0);
   const totalCents = subtotalCents + taxCents;
 
+  // Idempotency replay comes before quote consumption: a retry of a booking
+  // that was already created must not burn a fresh quote (or fail as "used").
+  if (idempotencyKey) {
+    const [existing] = await db
+      .select()
+      .from(bookings)
+      .where(eq(bookings.idempotencyKey, idempotencyKey))
+      .limit(1);
+    if (existing) {
+      if (existing.accountId !== input.accountId || existing.totalCents !== totalCents) {
+        return { ok: false, status: 409, error: 'Idempotency key already used with a different payload' };
+      }
+      const priorItems = await db
+        .select()
+        .from(bookingItems)
+        .where(eq(bookingItems.bookingId, existing.id));
+      return { ok: true, created: { booking: presentBooking(existing), items: priorItems, replayed: true }, status: 200 };
+    }
+  }
+
   // Quote enforcement: signature → expiry → single-use → totals match.
   let quote: Quote | null = null;
   if (input.quoteToken) {
@@ -162,27 +205,11 @@ export async function createBooking(
       return { ok: false, status: 409, error: 'Quote totals do not match — search again' };
     }
     const ttlSeconds = Math.max(60, Math.min(86_400, Math.floor((quoted.expiresAt - Date.now()) / 1000)));
-    const claimed = await getRedis().set(`quote-spent:${quoted.jti}`, '1', 'EX', ttlSeconds, 'NX');
+    const redis = getRedis();
+    await waitUntilRedisReady(redis);
+    const claimed = await redis.set(`quote-spent:${quoted.jti}`, '1', 'EX', ttlSeconds, 'NX');
     if (!claimed) {
       return { ok: false, status: 409, error: 'Quote already used' };
-    }
-  }
-
-  if (idempotencyKey) {
-    const [existing] = await db
-      .select()
-      .from(bookings)
-      .where(eq(bookings.idempotencyKey, idempotencyKey))
-      .limit(1);
-    if (existing) {
-      if (existing.accountId !== input.accountId || existing.totalCents !== totalCents) {
-        return { ok: false, status: 409, error: 'Idempotency key already used with a different payload' };
-      }
-      const priorItems = await db
-        .select()
-        .from(bookingItems)
-        .where(eq(bookingItems.bookingId, existing.id));
-      return { ok: true, created: { booking: presentBooking(existing), items: priorItems, replayed: true }, status: 200 };
     }
   }
 
@@ -211,92 +238,132 @@ export async function createBooking(
   for (let attempt = 0; attempt < 5; attempt++) {
     const ref = await allocateRef(prefix);
     try {
-      const [booking] = await db
-        .insert(bookings)
-        .values({
-          ref,
-          accountId: input.accountId,
-          channel: input.channel,
-          status: 'pending_payment',
-          currency: input.currency.toUpperCase(),
-          baseCurrency: 'BWP',
-          subtotalCents,
-          taxCents,
-          totalCents,
-          idempotencyKey,
-          traceId,
-        })
-        .returning();
+      // Booking, items, guests, and the immutable snapshot commit together.
+      // A ticketing-capable booking must never exist without its passengers.
+      const created = await db.transaction(async (tx) => {
+        const [booking] = await tx
+          .insert(bookings)
+          .values({
+            ref,
+            accountId: input.accountId,
+            channel: input.channel,
+            status: 'pending_payment',
+            currency: input.currency.toUpperCase(),
+            baseCurrency: 'BWP',
+            subtotalCents,
+            taxCents,
+            totalCents,
+            idempotencyKey,
+            traceId,
+          })
+          .returning();
 
-      const createdItems = await db
-        .insert(bookingItems)
-        .values(
-          itemsWithTotals.map((item) => ({
-            bookingId: booking.id,
-            itemType: item.itemType,
-            itemRef: item.itemRef,
-            itemSupplierType: item.itemSupplierType,
-            snapshot: {
+        const createdItems = await tx
+          .insert(bookingItems)
+          .values(
+            itemsWithTotals.map((item) => ({
+              bookingId: booking.id,
               itemType: item.itemType,
               itemRef: item.itemRef,
+              itemSupplierType: item.itemSupplierType,
+              snapshot: {
+                ...(item.snapshot ?? {}),
+                itemType: item.itemType,
+                itemRef: item.itemRef,
+                quantity: item.quantity,
+                netCents: item.netCents,
+                markupCents: item.markupCents,
+                taxCents: item.taxCents,
+              },
+              startDate: item.startDate ?? null,
+              endDate: item.endDate ?? null,
               quantity: item.quantity,
+              adults: item.adults ?? 0,
+              children: item.children ?? 0,
+              infants: item.infants ?? 0,
               netCents: item.netCents,
               markupCents: item.markupCents,
               taxCents: item.taxCents,
+              totalCents: item.totalCents,
+            })),
+          )
+          .returning();
+
+        if (input.guests?.length) {
+          await tx.insert(bookingGuests).values(
+            input.guests.map((guest) => ({
+              bookingId: booking.id,
+              guestType: guest.guestType,
+              firstName: guest.firstName,
+              lastName: guest.lastName,
+              dateOfBirth: guest.dateOfBirth ?? null,
+              passportNumber: guest.passportNumber ?? null,
+              passportExpiry: guest.passportExpiry ?? null,
+              nationality: guest.nationality?.toUpperCase() ?? null,
+              email: guest.email ?? null,
+              phoneE164: guest.phoneE164 ?? null,
+              isLead: guest.isLead ?? false,
+            })),
+          );
+        }
+
+        // Immutable price record: never re-price a confirmed booking.
+        const [snapshot] = await tx
+          .insert(pricingSnapshots)
+          .values({
+            bookingId: booking.id,
+            baseCurrency: 'BWP',
+            displayCurrency: booking.currency,
+            lineItems: itemsWithTotals,
+            subtotalCents,
+            taxCents,
+            totalCents,
+            rulesApplied: {
+              ...(quote
+                ? { source: 'quote', jti: quote.jti, ...quote.rulesApplied }
+                : { source: 'snapshot', floatBps: 0, fxBufferBps: 0 }),
+              ...(input.pricingMeta ? { pricing: input.pricingMeta } : {}),
             },
-            quantity: item.quantity,
-            netCents: item.netCents,
-            markupCents: item.markupCents,
-            taxCents: item.taxCents,
-            totalCents: item.totalCents,
-          })),
-        )
-        .returning();
+          })
+          .returning();
 
-      // Immutable price record: never re-price a confirmed booking.
-      const [snapshot] = await db
-        .insert(pricingSnapshots)
-        .values({
-          bookingId: booking.id,
-          baseCurrency: 'BWP',
-          displayCurrency: booking.currency,
-          lineItems: itemsWithTotals,
-          subtotalCents,
-          taxCents,
-          totalCents,
-          rulesApplied: {
-            ...(quote
-              ? { source: 'quote', jti: quote.jti, ...quote.rulesApplied }
-              : { source: 'snapshot', floatBps: 0, fxBufferBps: 0 }),
-            ...(input.pricingMeta ? { pricing: input.pricingMeta } : {}),
+        const [withSnapshot] = await tx
+          .update(bookings)
+          .set({ pricingSnapshotId: snapshot.id })
+          .where(eq(bookings.id, booking.id))
+          .returning();
+
+        await tx.insert(auditEvents).values({
+          actorId: input.accountId,
+          actorRealm: account.realm,
+          action: 'booking.created',
+          entityType: 'booking',
+          entityId: booking.id,
+          diff: {
+            ref,
+            totalCents,
+            status: booking.status,
+            itemCount: createdItems.length,
+            guestCount: input.guests?.length ?? 0,
+            ...(input.agencyId ? { agencyId: input.agencyId } : {}),
           },
-        })
-        .returning();
-      await db
-        .update(bookings)
-        .set({ pricingSnapshotId: snapshot.id })
-        .where(eq(bookings.id, booking.id));
-      booking.pricingSnapshotId = snapshot.id;
+          traceId,
+        });
 
-      await db.insert(auditEvents).values({
-        actorId: input.accountId,
-        actorRealm: account.realm,
-        action: 'booking.created',
-        entityType: 'booking',
-        entityId: booking.id,
-        diff: {
-          ref,
-          totalCents,
-          status: booking.status,
-          itemCount: createdItems.length,
-          ...(input.agencyId ? { agencyId: input.agencyId } : {}),
-        },
-        traceId,
+        return { booking: withSnapshot ?? booking, items: createdItems };
       });
 
-      await enqueueReconciliation({ bookingId: booking.id, traceId });
+      await enqueueReconciliation({ bookingId: created.booking.id, traceId });
 
-      return { ok: true, created: { booking: presentBooking(booking), items: createdItems, replayed: false }, status: 201 };
+      return {
+        ok: true,
+        created: {
+          booking: presentBooking(created.booking),
+          items: created.items,
+          replayed: false,
+        },
+        status: 201,
+      };
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === '23505' && idempotencyKey) {
@@ -310,7 +377,15 @@ export async function createBooking(
             .select()
             .from(bookingItems)
             .where(eq(bookingItems.bookingId, winner.id));
-          return { ok: true, created: { booking: presentBooking(winner), items: winnerItems, replayed: true }, status: 200 };
+          return {
+            ok: true,
+            created: {
+              booking: presentBooking(winner),
+              items: winnerItems,
+              replayed: true,
+            },
+            status: 200,
+          };
         }
       }
       if (code === '23505') continue;

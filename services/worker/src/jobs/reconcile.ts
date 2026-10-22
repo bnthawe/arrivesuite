@@ -41,6 +41,9 @@ const PROCESS_TIMEOUT_MS = 4 * 60_000;
 const BATCH_SIZE = 200;
 const GRACE_MS = 10 * 60_000;
 const RENOTIFY_MS = 60 * 60_000;
+// These alerts are opened by a write path, not by the sweep. They stay open
+// until an operator resolves them; a clean sweep must not silently clear them.
+const MANUAL_ALERT_KINDS = new Set(['ticketing_failed']);
 
 export async function reconcileBookings(job: Job<ReconcileJobData>): Promise<ReconcileResult> {
   let timer: NodeJS.Timeout | undefined;
@@ -207,6 +210,32 @@ async function readFindingsFor(targets: BookingRow[]): Promise<Finding[]> {
         if (subtotal !== booking.subtotalCents || tax !== booking.taxCents || subtotal + tax !== booking.totalCents) {
           findings.push({ kind: 'booking_mismatch', reference: booking.ref.trim(), severity: 'P1', details: { bookingId: booking.id } });
         }
+
+        // Payment-first flights must move confirmed -> ticketing -> ticketed.
+        // A crashed return handler or a provider outage leaves the booking in
+        // one of those states; surface it instead of waiting for the traveller.
+        const hasUnticketedPostPaymentFlight = items.some((item) => {
+          if (item.itemType !== 'flight' || item.confirmationRef) return false;
+          const snapshot =
+            item.snapshot && typeof item.snapshot === 'object'
+              ? (item.snapshot as Record<string, unknown>)
+              : {};
+          return snapshot.fulfillment === 'post_payment' || Boolean(snapshot.flightOffer);
+        });
+        const ticketingStaleMs = Date.now() - booking.updatedAt.getTime();
+        if (
+          booking.paidCents > 0 &&
+          ticketingStaleMs > 10 * 60_000 &&
+          (booking.status === 'ticketing' ||
+            (booking.status === 'confirmed' && hasUnticketedPostPaymentFlight))
+        ) {
+          findings.push({
+            kind: 'ticketing_stuck',
+            reference: booking.ref.trim(),
+            severity: 'P1',
+            details: { bookingId: booking.id, status: booking.status },
+          });
+        }
       }
 
       // Captured payments must sum to paidCents — scoped to checked bookings.
@@ -338,7 +367,7 @@ async function syncAlertStates(findings: Finding[], traceId: string): Promise<st
 
   for (const state of unresolved) {
     const key = `${state.kind}:${state.reference}`;
-    if (!open.has(key)) {
+    if (!open.has(key) && !MANUAL_ALERT_KINDS.has(state.kind)) {
       await db.update(alertStates).set({ resolvedAt: new Date() }).where(eq(alertStates.id, state.id));
     }
   }

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { recordWriteAudit } from './audit';
-import { getRedis } from './redis';
+import { getRedis, waitUntilRedisReady } from './redis';
 
 // ADR-0014 / FR-5.15.34: client-generated key, server dedupe, 24h retention.
 // Completed responses are cached by scope + caller identity + key, so a retry
@@ -30,20 +30,18 @@ export interface IdempotencyStore {
   release(key: string, claimValue: string): Promise<boolean>;
 }
 
-type RedisClient = ReturnType<typeof getRedis>;
-
 export function createRedisIdempotencyStore(redis = getRedis()): IdempotencyStore {
   return {
     async claim(key, value, ttlSeconds) {
-      await waitUntilReady(redis);
+      await waitUntilRedisReady(redis);
       return (await redis.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK';
     },
     async get(key) {
-      await waitUntilReady(redis);
+      await waitUntilRedisReady(redis);
       return redis.get(key);
     },
     async complete(key, claimValue, value, ttlSeconds) {
-      await waitUntilReady(redis);
+      await waitUntilRedisReady(redis);
       const result = await redis.eval(
         COMPLETE_SCRIPT,
         1,
@@ -55,41 +53,11 @@ export function createRedisIdempotencyStore(redis = getRedis()): IdempotencyStor
       return Number(result) === 1;
     },
     async release(key, claimValue) {
-      await waitUntilReady(redis);
+      await waitUntilRedisReady(redis);
       const result = await redis.eval(RELEASE_SCRIPT, 1, key, claimValue);
       return Number(result) === 1;
     },
   };
-}
-
-// getRedis deliberately disables the offline command queue so a dead Redis
-// cannot hang a request. That means the first command can race the initial
-// connection; wait for the ready event (bounded) before issuing it.
-async function waitUntilReady(redis: RedisClient, timeoutMs = 5_000): Promise<void> {
-  if (redis.status === 'ready') return;
-  if (redis.status === 'end') throw new Error('Redis connection is closed');
-
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Redis did not become ready in time'));
-    }, timeoutMs);
-    const onReady = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = (err: unknown) => {
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    };
-    const cleanup = () => {
-      clearTimeout(timer);
-      redis.off('ready', onReady);
-      redis.off('error', onError);
-    };
-    redis.once('ready', onReady);
-    redis.once('error', onError);
-  });
 }
 
 export interface IdempotencyOptions {

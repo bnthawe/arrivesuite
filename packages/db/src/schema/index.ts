@@ -5,6 +5,7 @@ export * from './verification_tokens';
 export * from './audit_events';
 export * from './bookings';
 export * from './booking_items';
+export * from './booking_guests';
 export * from './pricing_snapshots';
 export * from './payments';
 export * from './markup';

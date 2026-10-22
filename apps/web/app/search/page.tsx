@@ -233,7 +233,7 @@ export default function SearchPage() {
                 <TileImage src={f.imageUrl} label={f.flight} />
                 <div className="flex-1 min-w-0">
                   <Link
-                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}`}
+                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}&adults=${adults}&children=${childArray.length}&infants=0`}
                     className="text-[15px] font-semibold hover:text-[#0071C2]"
                   >
                     {f.flight}
@@ -249,7 +249,7 @@ export default function SearchPage() {
                     {f.fareBrand && <span className="inline-flex items-center border border-[#e3e3e3] rounded-full px-2 py-0.5 text-[11px]">{f.fareBrand}</span>}
                   </div>
                   <Link
-                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}`}
+                    href={`/flights/offer?offerId=${encodeURIComponent(f.offerId)}&adults=${adults}&children=${childArray.length}&infants=0`}
                     className="mt-2 inline-block text-xs font-semibold text-[#0071C2]"
                   >
                     View fare details →

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState } from 'react';
 
 function getCartId(): string {
@@ -14,9 +15,11 @@ function getCartId(): string {
 
 export default function FlightOfferActions({
   offerId,
+  checkoutHref,
   disabled,
 }: {
   offerId: string;
+  checkoutHref: string;
   disabled: boolean;
 }) {
   const router = useRouter();
@@ -43,18 +46,32 @@ export default function FlightOfferActions({
 
   return (
     <div className="grid gap-2">
+      <Link
+        href={checkoutHref}
+        aria-disabled={disabled}
+        onClick={(event) => {
+          if (disabled) event.preventDefault();
+        }}
+        className={`text-center font-semibold rounded-lg px-5 py-3 text-sm ${
+          disabled
+            ? 'bg-[#9bc4e5] text-white pointer-events-none'
+            : 'bg-[#0071C2] hover:bg-[#005799] text-white'
+        }`}
+      >
+        Continue to checkout
+      </Link>
       <button
         type="button"
         onClick={() => void addToCart()}
         disabled={disabled || busy}
-        className="bg-[#0071C2] hover:bg-[#005799] disabled:bg-[#9bc4e5] text-white font-semibold rounded-lg px-5 py-3 text-sm"
+        className="border border-[#0071C2] text-[#0071C2] hover:bg-[#f0f7fc] disabled:border-[#9bc4e5] disabled:text-[#9bc4e5] font-semibold rounded-lg px-5 py-2.5 text-sm"
       >
-        {busy ? 'Adding…' : 'Add to cart'}
+        {busy ? 'Adding…' : 'Add to cart instead'}
       </button>
       {notice && <p className="text-xs text-[#b91c1c]">{notice}</p>}
       <p className="text-[11px] leading-4 text-[#666]">
-        The fare is revalidated at checkout. Airline fare rules apply once the
-        ticket is issued.
+        Checkout collects traveller details and payment. The airline order is created only after
+        payment is confirmed.
       </p>
     </div>
   );
