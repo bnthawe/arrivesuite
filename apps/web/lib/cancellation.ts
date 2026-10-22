@@ -171,11 +171,18 @@ export async function cancelBooking(input: {
       error: `Booking is ${booking.status} and cannot be cancelled`,
     };
   }
-  if (flightItems.length !== 1 || !currentItem) {
+  if (items.length !== 1 || flightItems.length !== 1 || !currentItem) {
     return {
       ok: false,
       status: 409,
-      error: 'Flight cancellation requires exactly one flight item; use manual handling',
+      error: 'Flight cancellation requires exactly one sourced flight item; use manual handling',
+    };
+  }
+  if (currentItem.itemSupplierType !== 'sourced') {
+    return {
+      ok: false,
+      status: 409,
+      error: 'Only sourced flight items can be cancelled from this screen',
     };
   }
   if (currentItem.status === 'cancelled') {

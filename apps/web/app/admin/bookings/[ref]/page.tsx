@@ -345,7 +345,11 @@ export default function AdminBookingDetailPage() {
   const refundPreview = fareRefundable
     ? Math.max(0, booking.paidCents - booking.refundedCents)
     : 0;
-  const canCancel = cancelStatus && flightItems.length === 1 && fareRefundable !== null;
+  const canCancel =
+    cancelStatus &&
+    detail.items.length === 1 &&
+    flightItems.length === 1 &&
+    fareRefundable !== null;
 
   return (
     <main className="min-h-screen bg-[#f5f5f5]">
