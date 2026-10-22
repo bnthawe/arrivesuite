@@ -49,7 +49,7 @@ jobs:
         run: pnpm --filter @arrivesuite/web lint
 
       - name: Typecheck web
-        run: pnpm --filter @arrivesuite/web exec tsc --noEmit
+        run: pnpm --filter @arrivesuite/web typecheck
 
       - name: Typecheck worker
         run: pnpm --filter @arrivesuite/worker typecheck
