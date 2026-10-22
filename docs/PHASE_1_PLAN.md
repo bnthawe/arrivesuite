@@ -1,11 +1,12 @@
 # Phase 1 implementation plan — sourced flights + B2C
 
-Status: **slices 1–3 committed; slice 4 cancellation/refund controls implemented
+Status: **slices 1–4 committed; slice 4 cancellation/refund controls implemented
 and locally validated (2026-10-22). Browser runs with local DPO simulation
 reached ticketed + voucher + WhatsApp sandbox, then cancelled + refunded. The
 live DPO sandbox API is currently blocked by CloudFront HTTP 403 from this
 environment.**
-Baseline: slice 3 at `ed16cb9`; slice 4 is in the working tree with this document.
+Baseline: slice 3 at `ed16cb9`; slice 4 at `871a53a`, with the single-sourced-item
+guard at `bca37e7`.
 
 ## Provider decision
 
@@ -233,6 +234,8 @@ Validation completed locally:
 - `pnpm lint` and `pnpm typecheck` pass.
 - `pnpm test` passes with the segregated test database and Redis (48 web tests,
   3 worker tests, 43 integration tests; live provider tests skipped).
+- `pnpm --filter @arrivesuite/web build` passes with only the three pre-existing
+  dynamic-filesystem warnings in `tickets/[ref]`.
 - `packages/integrations` tests pass (43 passed, 2 skipped), including the
   cancellation quote/cancel contract.
 - DB-backed tests cover:
