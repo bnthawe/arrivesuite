@@ -5,6 +5,7 @@ import { auditEvents, bookings, db, paymentIntents } from '@arrivesuite/db';
 import {
   createDpoToken,
   createStripeCheckoutSession,
+  dpoConfigFromEnv,
   dpoHostedPageUrl,
   initializeFlutterwavePayment,
   initializePaystackTransaction,
@@ -12,6 +13,7 @@ import {
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 import { verifyBookingAccess } from '@/lib/booking-access';
+import { resolveDpoRedirectUrl } from '@/lib/dpo-redirect';
 import { getSystemFlag } from '@/lib/system-flags';
 
 type PaymentIntentRow = typeof paymentIntents.$inferSelect;
@@ -195,21 +197,48 @@ async function handlePost(request: Request) {
   };
 
   if (method === 'dpo') {
-    const appUrl = process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? 'http://localhost:3000';
+    const dpoCfg = dpoConfigFromEnv();
+    const redirect = resolveDpoRedirectUrl(parsed.data.returnTo);
+    if (!redirect.url) {
+      // DPO's CloudFront WAF rejects localhost/private RedirectURL values with
+      // an opaque 403. In live mode this is a configuration error: fail closed
+      // rather than send a token that cannot return to the app. In sandbox mode
+      // omit the redirect so the gateway can still create the token; the
+      // operator can complete the return URL manually or set
+      // DPO_PAY_REDIRECT_URL to a public tunnel.
+      if (!dpoCfg.sandbox) {
+        console.error('[payments.init] DPO requires a public redirect URL', {
+          reason: redirect.reason,
+        });
+        await db
+          .update(paymentIntents)
+          .set({ state: 'failed' })
+          .where(eq(paymentIntents.id, intent.id));
+        return NextResponse.json(
+          { error: 'Payment provider is misconfigured: a public redirect URL is required' },
+          { status: 500 },
+        );
+      }
+      console.warn('[payments.init] DPO redirect URL is not public; omitting RedirectURL/BackURL', {
+        reason: redirect.reason,
+      });
+    }
+
     let token;
     try {
-      token = await createDpoToken({
-        amountMajor: (dueCents / 100).toFixed(2),
-        currency: booking.currency,
-        companyRef: reference,
-        email: parsed.data.email,
-        firstName: parsed.data.firstName,
-        lastName: parsed.data.lastName,
-        serviceDescription: `ArriveSuite booking ${booking.ref.trim()}`,
-        redirectUrl: `${appUrl}/api/v1/payments/dpo/return${
-          parsed.data.returnTo === 'confirmation' ? '/confirmation' : ''
-        }`,
-      });
+      token = await createDpoToken(
+        {
+          amountMajor: (dueCents / 100).toFixed(2),
+          currency: booking.currency,
+          companyRef: reference,
+          email: parsed.data.email,
+          firstName: parsed.data.firstName,
+          lastName: parsed.data.lastName,
+          serviceDescription: `ArriveSuite booking ${booking.ref.trim()}`,
+          redirectUrl: redirect.url ?? undefined,
+        },
+        dpoCfg,
+      );
     } catch (err) {
       console.error('[payments.init] DPO token creation failed', err);
       return fail();

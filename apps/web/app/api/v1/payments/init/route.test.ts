@@ -38,13 +38,18 @@ vi.mock('@/lib/idempotency', () => ({
 
 vi.mock('@arrivesuite/integrations', () => ({
   createDpoToken: vi.fn(),
+  dpoConfigFromEnv: vi.fn(),
   dpoHostedPageUrl: vi.fn((token: string) => `https://dpo.test/${token}`),
   createStripeCheckoutSession: vi.fn(),
   initializeFlutterwavePayment: vi.fn(),
   initializePaystackTransaction: vi.fn(),
 }));
 
-import { createDpoToken, dpoHostedPageUrl } from '@arrivesuite/integrations';
+import {
+  createDpoToken,
+  dpoConfigFromEnv,
+  dpoHostedPageUrl,
+} from '@arrivesuite/integrations';
 import { POST } from './route';
 
 const booking = {
@@ -88,6 +93,16 @@ describe('POST /api/v1/payments/init access control', () => {
     vi.clearAllMocks();
     process.env.BOOKING_ACCESS_SECRET = 'test-booking-access-secret-at-least-32-chars';
     process.env.APP_URL = 'http://localhost:3000';
+    process.env.DPO_PAY_REDIRECT_URL = 'https://pay.example.com';
+
+    vi.mocked(dpoConfigFromEnv).mockReturnValue({
+      companyToken: 'test-token',
+      productServiceId: '54841',
+      serviceServiceId: '85325',
+      baseUrl: 'https://dpo.test/API/v6/',
+      sandbox: true,
+      simulate: false,
+    });
 
     const returning = vi.fn(async () => [intent]);
     vi.mocked(db.insert).mockReturnValue({
@@ -154,9 +169,61 @@ describe('POST /api/v1/payments/init access control', () => {
     });
     expect(createDpoToken).toHaveBeenCalledWith(
       expect.objectContaining({
-        redirectUrl: 'http://localhost:3000/api/v1/payments/dpo/return/confirmation',
+        redirectUrl: 'https://pay.example.com/api/v1/payments/dpo/return/confirmation',
+      }),
+      expect.objectContaining({ sandbox: true }),
+    );
+  });
+
+  it('omits a localhost DPO redirect in sandbox mode', async () => {
+    delete process.env.DPO_PAY_REDIRECT_URL;
+    queueSelectResults([booking], []);
+
+    const res = await POST(
+      request({
+        bookingRef: booking.ref,
+        email: 'guest@example.com',
+        method: 'dpo',
+        returnTo: 'confirmation',
+        accessToken: signBookingAccess(booking.ref),
       }),
     );
+
+    expect(res.status).toBe(201);
+    expect(createDpoToken).toHaveBeenCalledWith(
+      expect.objectContaining({ redirectUrl: undefined }),
+      expect.objectContaining({ sandbox: true }),
+    );
+  });
+
+  it('fails closed when live DPO would receive a localhost redirect', async () => {
+    delete process.env.DPO_PAY_REDIRECT_URL;
+    vi.mocked(dpoConfigFromEnv).mockReturnValue({
+      companyToken: 'test-token',
+      productServiceId: '54841',
+      serviceServiceId: '85325',
+      baseUrl: 'https://dpo.test/API/v6/',
+      sandbox: false,
+      simulate: false,
+    });
+    queueSelectResults([booking], []);
+
+    const res = await POST(
+      request({
+        bookingRef: booking.ref,
+        email: 'guest@example.com',
+        method: 'dpo',
+        returnTo: 'confirmation',
+        accessToken: signBookingAccess(booking.ref),
+      }),
+    );
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining('public redirect URL'),
+    });
+    expect(createDpoToken).not.toHaveBeenCalled();
+    expect(db.update).toHaveBeenCalled();
   });
 
   it('returns a resumable DPO page instead of a second active intent', async () => {

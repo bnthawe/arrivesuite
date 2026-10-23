@@ -3,8 +3,11 @@
 Status: **slices 1–4 committed; slice 4 cancellation/refund controls implemented
 and locally validated (2026-10-22). Browser runs with local DPO simulation
 reached ticketed + voucher + WhatsApp sandbox, then cancelled + refunded. The
-live DPO sandbox API is currently blocked by CloudFront HTTP 403 from this
-environment.**
+live DPO sandbox previously returned CloudFront HTTP 403 due to localhost/private
+`RedirectURL`/`BackURL` values; the redirect-safety guard now omits them in
+sandbox and fails closed in live (override via `DPO_PAY_REDIRECT_URL`). Token
+creation against public sandbox accounts succeeds; full hosted-payment acceptance
+remains pending.**
 Baseline: slice 3 at `ed16cb9`; slice 4 at `871a53a`, with the single-sourced-item
 guard at `bca37e7`.
 
@@ -87,7 +90,12 @@ Tests:
    payment atomically, then redirects to
    `/bookings/[ref]/confirmation?token=…`. The JSON return route remains for
    API callers.
-5. After capture, `lib/ticketing.ts`:
+5. The DPO return URL is sanitized by `apps/web/lib/dpo-redirect.ts`; localhost
+   and private hosts are omitted in sandbox mode or fail closed in live mode.
+   Set `DPO_PAY_REDIRECT_URL` to a public HTTPS base to exercise the automatic
+   return flow locally. This avoids the CloudFront WAF 403 caused by private
+   redirect hosts.
+6. After capture, `lib/ticketing.ts`:
    - claims `confirmed → ticketing` conditionally;
    - takes a Redis lock and re-reads the booking/items;
    - creates the OnArrival order from the frozen `flightOffer` snapshot and
@@ -131,11 +139,12 @@ Validation completed locally:
 
 Still unvalidated:
 
-- A live DPO sandbox browser run. The `createToken` API currently returns
-  CloudFront HTTP 403 (“Request blocked”) from this environment, so the new
-  flow could not open a real DPO hosted page. The same client path completed
-  five 100 BWP live sandbox cycles in Phase 0; retry from an allowed network or
-  ask DPO to allowlist the environment.
+- A live DPO sandbox browser run with automatic redirect. The CloudFront
+  403 was caused by localhost/private `RedirectURL` values; the app now omits
+  them in sandbox or fails closed in live and supports `DPO_PAY_REDIRECT_URL`
+  for a public tunnel. Token creation succeeds against public sandbox accounts
+  (including BWP 7,150 for Account 3); full hosted-payment + return acceptance
+  is still pending.
 - A Paystack test-key run of the new flow (the local `sk_test_...` key returns
   401).
 - EU-card 3-D Secure.
@@ -296,9 +305,10 @@ Remaining for the full §5.20 engine:
 - `booking_guests` PII retention and export redaction still need the §6.4
   retention job and admin redaction rules.
 - Segregated test database is required for destructive end-to-end runs.
-- DPO’s live sandbox API is blocked by CloudFront HTTP 403 from this environment;
-  the local-simulation path is green, but live acceptance needs a network that
-  DPO allows (or an allowlist entry).
+- The DPO CloudFront 403 was caused by localhost/private redirect URLs; the
+  app now guards against sending them (omit in sandbox, fail closed in live,
+  override via `DPO_PAY_REDIRECT_URL`). Live hosted-payment acceptance remains
+  pending on an allowed network and a completed sandbox card payment.
 - Paystack live sandbox validation remains blocked by the local test key (401).
 - 3-D Secure test coverage remains unavailable from DPO; web-first checkout is
   the mitigation.
