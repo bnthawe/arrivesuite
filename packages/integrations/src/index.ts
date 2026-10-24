@@ -28,6 +28,7 @@ export {
   whatsAppConfigFromEnv,
   normalizePhone,
   sendTemplateMessage,
+  sendTextMessage,
 } from './whatsapp';
 export type { WhatsAppConfig, TemplateMessage, TemplateMessageResult } from './whatsapp';
 export {

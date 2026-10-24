@@ -63,3 +63,29 @@ export async function sendTemplateMessage(
   );
   return { messageId: res.messages[0]?.id ?? '' };
 }
+
+export async function sendTextMessage(
+  to: string,
+  text: string,
+  cfg = whatsAppConfigFromEnv(),
+): Promise<TemplateMessageResult> {
+  if (cfg.sandbox) {
+    console.log(`[whatsapp:sandbox] to=${to} text=${text}`);
+    return { messageId: `wamid.sandbox.${Date.now()}` };
+  }
+  const res = await providerFetch<{ messages: { id: string }[] }>(
+    `/${cfg.phoneNumberId}/messages`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.accessToken}` },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: text },
+      }),
+    },
+    { baseUrl: 'https://graph.facebook.com/v21.0', apiKey: cfg.accessToken, provider: 'whatsapp' },
+  );
+  return { messageId: res.messages?.[0]?.id ?? '' };
+}
