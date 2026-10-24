@@ -229,15 +229,20 @@ export async function createFlightOrder(
   if (cfg.sandbox) {
     return { orderId: `ord_${req.offerId}`, pnr: 'ABC123', ticket: 'H-77421', pdf: '/cdn/tickets/H-77421.pdf' };
   }
+  const headers: Record<string, string> = authHeaders(cfg);
+  if (req.idempotencyKey) {
+    headers['Idempotency-Key'] = req.idempotencyKey;
+  }
   const res = await providerFetch<{ data?: Record<string, unknown> } & Record<string, unknown>>(
     '/v1/flight/orders',
     {
       method: 'POST',
-      headers: authHeaders(cfg),
+      headers,
       body: JSON.stringify({
         offerId: req.offerId,
         paymentToken: req.paymentToken,
         passengers: req.passengers,
+        ...(req.idempotencyKey ? { idempotencyKey: req.idempotencyKey } : {}),
       }),
     },
     { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, provider: 'onarrival' },
@@ -338,16 +343,21 @@ export async function cancelFlightOrder(
       cancellationId: `cancel_${req.orderId}`,
     };
   }
+  const headers: Record<string, string> = authHeaders(cfg);
+  if (req.idempotencyKey) {
+    headers['Idempotency-Key'] = req.idempotencyKey;
+  }
   const res = await providerFetch<Record<string, unknown>>(
     cancellationPath(req.orderId),
     {
       method: 'POST',
-      headers: authHeaders(cfg),
+      headers,
       body: JSON.stringify({
         reason: req.reason,
         code: req.code,
         additionalReason: req.additionalReason ?? false,
         ...(req.remarks ? { remarks: req.remarks } : {}),
+        ...(req.idempotencyKey ? { idempotencyKey: req.idempotencyKey } : {}),
       }),
     },
     { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, provider: 'onarrival' },

@@ -70,6 +70,7 @@ export const flightOrderRequestSchema = z.object({
   paymentToken: z.string().min(1),
   passengers: z.array(passengerSchema).min(1).max(9),
   guestInfo: guestInfoSchema.optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
 });
 export type FlightOrderRequest = z.infer<typeof flightOrderRequestSchema>;
 
@@ -103,6 +104,7 @@ export interface FlightCancellationRequest {
   reason: string;
   additionalReason?: boolean;
   remarks?: string;
+  idempotencyKey?: string;
 }
 
 export interface FlightCancellationResult {

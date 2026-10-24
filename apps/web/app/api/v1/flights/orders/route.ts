@@ -49,6 +49,7 @@ async function handlePost(request: Request) {
     offerId: input.offerId,
     paymentToken: input.paymentToken,
     passengers: input.passengers,
+    idempotencyKey: request.headers.get('Idempotency-Key') ?? undefined,
   });
 
   const guestEmail = input.guestInfo?.email;

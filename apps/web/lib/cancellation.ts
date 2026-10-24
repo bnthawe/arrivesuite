@@ -352,6 +352,7 @@ export async function cancelBooking(input: {
           reason: reason.display,
           additionalReason: reason.additionalReason ?? false,
           remarks: input.remarks ?? `Admin cancellation for ${ref}`,
+          idempotencyKey: `cancel:${booking.id}:${item.id}`,
         });
         providerCancellations.set(item.id, pc);
       } catch (err) {

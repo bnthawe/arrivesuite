@@ -242,6 +242,7 @@ export async function fulfillPaidBooking(
         paymentToken,
         passengers,
         ...(guestInfo ? { guestInfo } : {}),
+        idempotencyKey: `ticketing:${bookingId}:${item.id}`,
       });
 
       const [updated] = await db
