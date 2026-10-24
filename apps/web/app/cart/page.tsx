@@ -159,7 +159,7 @@ export default function CartPage() {
               )}
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-semibold leading-[16px]">{it.label}</div>
-                <div className="text-[11px] text-[#666]">{it.kind} • {(it.netCents + it.markupCents) / 100} {it.currency}</div>
+                <div className="text-[11px] text-[#666]">{it.kind} • {((it.netCents + it.markupCents) / 100).toFixed(2)} {it.currency}{it.kind === 'flight' && ' (fare; service fee at checkout)'}</div>
               </div>
             </div>
           ))}

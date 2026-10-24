@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createDpoToken, dpoHostedPageUrl } from '@arrivesuite/integrations';
+import { createDpoToken, dpoConfigFromEnv, dpoHostedPageUrl } from '@arrivesuite/integrations';
+import { requireAdmin } from '@/lib/admin';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 
@@ -11,6 +12,10 @@ const createSchema = z.object({
   reference: z.string().min(1).max(100).optional(),
   description: z.string().min(1).max(200).default('ArriveSuite booking payment'),
 });
+
+// Ops ceiling for a single token in live mode. A typo in `amount` must not
+// mint a hosted page for an arbitrary sum.
+const LIVE_AMOUNT_CEILING_MINOR = 50_000_000; // BWP 500,000
 
 // Thin DPO token endpoint for sandbox verification and ops checks.
 // Booking-bound flows should use POST /api/v1/payments/init instead.
@@ -32,6 +37,17 @@ async function handlePost(request: Request) {
       { error: 'Validation failed', issues: parsed.error.issues },
       { status: 400 },
     );
+  }
+
+  // Sandbox calls stay open for local dev and tests. In live mode this is a
+  // token faucet unless it is admin-only, so gate it before any provider call.
+  const dpoCfg = dpoConfigFromEnv();
+  if (!dpoCfg.sandbox) {
+    const gate = await requireAdmin(request);
+    if ('response' in gate) return gate.response;
+    if (parsed.data.amount > LIVE_AMOUNT_CEILING_MINOR) {
+      return NextResponse.json({ error: 'Amount exceeds ops ceiling' }, { status: 400 });
+    }
   }
 
   const traceId = traceIdFromRequest(request);

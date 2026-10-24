@@ -4,6 +4,8 @@ import {
   computeMarkup,
   parseMarkupChannel,
   type AppliedMarkup,
+  type ChannelMode,
+  type ChannelTier,
   type MarkupChannel,
 } from '@arrivesuite/pricing';
 
@@ -22,6 +24,10 @@ export interface PricedItemResult extends PricedItem {
   applied: AppliedMarkup;
 }
 
+// Fallback if the b2c row is missing from a partially migrated DB. Mirrors
+// the 0003_markup.sql seed so pricing stays behaviour-preserving.
+const B2C_FALLBACK: ChannelTier = { mode: 'route', pctBps: 0 };
+
 // Applies hybrid route markup to sourced items (flights by O/D, hotels by
 // the default rule). Owned items pass through untouched.
 export async function applyRouteMarkup(
@@ -29,9 +35,20 @@ export async function applyRouteMarkup(
   segment: unknown,
 ): Promise<PricedItemResult[]> {
   const channel: MarkupChannel = parseMarkupChannel(segment);
-  const [tier] = channel === 'b2c'
-    ? [{ mode: 'route' as const, pctBps: 0 }]
-    : await db.select().from(channelMarkupTiers).where(eq(channelMarkupTiers.channel, channel)).limit(1);
+  const [tierRow] = await db
+    .select()
+    .from(channelMarkupTiers)
+    .where(eq(channelMarkupTiers.channel, channel))
+    .limit(1);
+
+  // Every channel (including b2c) is read from the table so an operator's
+  // edit in /admin actually changes pricing. The fallback only covers a
+  // database missing the seeded b2c row.
+  const tier: ChannelTier | null = tierRow
+    ? { mode: tierRow.mode as ChannelMode, pctBps: tierRow.pctBps }
+    : channel === 'b2c'
+      ? B2C_FALLBACK
+      : null;
 
   return Promise.all(
     items.map(async (item) => {
@@ -61,7 +78,7 @@ export async function applyRouteMarkup(
       const applied = computeMarkup(
         item.netCents,
         rule ? { pctBps: rule.pctBps, fixedCents: rule.fixedCents } : null,
-        tier ? { mode: tier.mode as AppliedMarkup['channelMode'], pctBps: tier.pctBps } : null,
+        tier,
         channel,
       );
       return { ...item, markupCents: applied.commissionCents, applied };

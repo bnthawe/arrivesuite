@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { getSessionAccount } from '@/lib/auth';
 import { createBooking } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 
@@ -41,6 +42,18 @@ async function handlePost(request: Request) {
       { error: 'Validation failed', issues: parsed.error.issues },
       { status: 400 },
     );
+  }
+
+  // The client must not choose whose booking it is. Non-admins book only for
+  // themselves; admins may use the backoffice path to book on behalf of an
+  // account. (Guest flows go through /flights/checkout or /hotels/book, which
+  // resolve the account server-side.)
+  const account = await getSessionAccount(request);
+  if (!account) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  if (account.realm !== 'admin' && parsed.data.accountId !== account.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const result = await createBooking({

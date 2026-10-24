@@ -86,6 +86,8 @@ export function snapshotFromFlightOffer(
     offerId: offer.offerId,
     label: offer.flight,
     netCents: offer.baseMinor ?? 0,
+    // Flights are re-priced server-side at checkout; the cart shows net, not
+    // retail, so it must not display a markup it cannot guarantee.
     markupCents: 0,
     currency,
     origin: route?.origin,

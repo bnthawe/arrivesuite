@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
-import { db, refunds } from '@arrivesuite/db';
+import { and, eq } from 'drizzle-orm';
+import {
+  bookings,
+  db,
+  paymentIntents,
+  payments,
+  refunds,
+} from '@arrivesuite/db';
+import { getSessionAccount } from '@/lib/auth';
 import { traceIdFromRequest } from '@/lib/bookings-core';
 import { withIdempotency } from '@/lib/idempotency';
 import { createRefundRequest } from '@/lib/refunds';
@@ -32,6 +39,26 @@ async function handlePost(request: Request) {
       { status: 400 },
     );
   }
+
+  // Auth before any DB work. Non-admins may only request refunds against
+  // payments on their own bookings.
+  const account = await getSessionAccount(request);
+  if (!account) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+  if (account.realm !== 'admin') {
+    const [owned] = await db
+      .select({ id: payments.id })
+      .from(payments)
+      .innerJoin(paymentIntents, eq(paymentIntents.id, payments.intentId))
+      .innerJoin(bookings, eq(bookings.id, paymentIntents.bookingId))
+      .where(and(eq(payments.id, parsed.data.paymentId), eq(bookings.accountId, account.id)))
+      .limit(1);
+    if (!owned) {
+      return NextResponse.json({ error: 'Payment not found' }, { status: 404 });
+    }
+  }
+
   const traceId = traceIdFromRequest(request, parsed.data.traceId);
 
   const result = await createRefundRequest({
@@ -48,9 +75,32 @@ async function handlePost(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const paymentId = new URL(request.url).searchParams.get('paymentId');
-  const rows = paymentId
-    ? await db.select().from(refunds).where(eq(refunds.paymentId, paymentId))
-    : await db.select().from(refunds);
-  return NextResponse.json({ refunds: rows });
+  const account = await getSessionAccount(request);
+  if (!account) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const paymentId = url.searchParams.get('paymentId');
+
+  if (account.realm === 'admin') {
+    const rows = paymentId
+      ? await db.select().from(refunds).where(eq(refunds.paymentId, paymentId))
+      : await db.select().from(refunds);
+    return NextResponse.json({ refunds: rows });
+  }
+
+  // Non-admin: only refunds against payments on their own bookings.
+  const scoped = await db
+    .select({ refund: refunds })
+    .from(refunds)
+    .innerJoin(payments, eq(payments.id, refunds.paymentId))
+    .innerJoin(paymentIntents, eq(paymentIntents.id, payments.intentId))
+    .innerJoin(bookings, eq(bookings.id, paymentIntents.bookingId))
+    .where(
+      paymentId
+        ? and(eq(bookings.accountId, account.id), eq(refunds.paymentId, paymentId))
+        : eq(bookings.accountId, account.id),
+    );
+  return NextResponse.json({ refunds: scoped.map((row) => row.refund) });
 }
