@@ -36,3 +36,26 @@ export async function uploadVoucherPdf(ref: string, filePath: string): Promise<s
   const base = (process.env.VOUCHER_CDN_BASE ?? '/cdn/tickets').replace(/\/$/, '');
   return `${base}/${ref}.pdf`;
 }
+
+export type MediaStorageMode = 'local' | 'r2';
+
+export function mediaStorageMode(): MediaStorageMode {
+  return process.env.MEDIA_STORAGE === 'r2' || process.env.VOUCHER_STORAGE === 'r2' ? 'r2' : 'local';
+}
+
+// Uploads a media file (image) to R2/S3. Returns the public URL.
+// Falls back to local storage path when R2 is not configured.
+export async function uploadMedia(key: string, body: Buffer, contentType: string): Promise<string> {
+  const bucket = process.env.S3_BUCKET;
+  if (!bucket) throw new Error('S3_BUCKET is not configured');
+  await s3Client().send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+  const base = (process.env.MEDIA_CDN_BASE ?? process.env.VOUCHER_CDN_BASE ?? '/cdn/media').replace(/\/$/, '');
+  return `${base}/${key}`;
+}

@@ -42,6 +42,7 @@ export default function PropertiesManager() {
   const [rateName, setRateName] = useState<Record<string, string>>({});
   const [ratePrice, setRatePrice] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState('');
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/v1/supplier/properties');
@@ -68,6 +69,25 @@ export default function PropertiesManager() {
     }
     setName('');
     await load();
+  }
+
+  async function uploadPhoto(propertyId: string, file: File) {
+    setUploading(true);
+    setNotice('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/v1/supplier/media', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        setNotice(data.error ?? 'Upload failed');
+        return;
+      }
+      // Attach photo URL to property via PATCH (if supported) or just show it
+      setNotice(`Photo uploaded: ${data.url}`);
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function setStatus(id: string, status: string) {
@@ -153,6 +173,19 @@ export default function PropertiesManager() {
             {p.status === 'published' && (
               <button onClick={() => setStatus(p.id, 'disabled')} className="ml-auto text-xs text-[#0071C2]">disable</button>
             )}
+            <label className="ml-2 text-xs text-[#0071C2] cursor-pointer">
+              {uploading ? 'Uploading…' : '📷 Photo'}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadPhoto(p.id, f);
+                }}
+                disabled={uploading}
+              />
+            </label>
           </div>
           {openRooms[p.id] && (
             <div className="mt-2 pl-2 space-y-2">
