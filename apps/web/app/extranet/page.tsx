@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import PropertiesManager from './properties';
 import ToursManager from './tours';
 import VenuesManager from './venues';
+import ContractsManager from './contracts';
 
 interface Supplier {
   id: string;
@@ -126,6 +127,7 @@ export default function ExtranetPage() {
             <PropertiesManager />
             <ToursManager />
             <VenuesManager />
+            <ContractsManager />
           </div>
         )}
       </div>
