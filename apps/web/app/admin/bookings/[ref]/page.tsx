@@ -287,6 +287,30 @@ export default function AdminBookingDetailPage() {
     }
   }
 
+  async function redactPii() {
+    if (!detail) return;
+    if (!window.confirm(`Redact PII for ${detail.booking.ref}? This cannot be undone.`)) return;
+    setBusy(true);
+    setNotice('');
+    try {
+      const res = await fetch(
+        `/api/v1/admin/bookings/${encodeURIComponent(detail.booking.ref)}/redact-pii`,
+        { method: 'POST' },
+      );
+      const body = (await res.json()) as { error?: string; result?: { guestsRedacted: number; alreadyRedacted: boolean } };
+      if (!res.ok) {
+        setNotice(body.error ?? 'PII redaction failed.');
+      } else if (body.result?.alreadyRedacted) {
+        setNotice('PII was already redacted.');
+      } else {
+        setNotice(`Redacted PII for ${body.result?.guestsRedacted ?? 0} guest(s).`);
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function approveRefund(refundId: string) {
     setBusy(true);
     setNotice('');
@@ -424,8 +448,15 @@ export default function AdminBookingDetailPage() {
                 disabled={busy}
               >
                 Resolve refund alert
+               </button>
+             )}
+             <button
+               className={btnGhost}
+               onClick={redactPii}
+               disabled={busy}
+             >
+               Redact PII
               </button>
-            )}
           </div>
         </div>
 
