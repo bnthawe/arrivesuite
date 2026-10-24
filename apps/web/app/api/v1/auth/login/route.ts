@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   if (!account || account.deletedAt) {
     return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
   }
-  if (!(await verifyPassword(account.passwordHash, parsed.data.password))) {
+  if (!account.passwordHash || !(await verifyPassword(account.passwordHash, parsed.data.password))) {
     await db.insert(auditEvents).values({
       actorId: account.id,
       actorRealm: account.realm,

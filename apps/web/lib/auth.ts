@@ -7,7 +7,7 @@ export const SESSION_TTL_MS = 8 * 60 * 60 * 1_000;
 
 export interface SessionAccount {
   id: string;
-  email: string;
+  email: string | null;
   realm: 'admin' | 'supplier' | 'agent' | 'customer';
   name: string | null;
 }
