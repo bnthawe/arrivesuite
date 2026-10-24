@@ -15,6 +15,16 @@ interface Supplier {
   countryCode: string;
 }
 
+interface TrustScore {
+  trustScore: number;
+  components: {
+    responsiveness: number;
+    cancellationRate: number;
+    inventoryFreshness: number;
+    compliance: number;
+  };
+}
+
 const input = 'border border-[#e3e3e3] rounded-lg px-3 py-2 text-sm w-full';
 const btn = 'bg-[#003580] hover:bg-[#005799] text-white font-semibold rounded-lg px-5 py-2.5 text-sm';
 
@@ -24,6 +34,7 @@ export default function ExtranetPage() {
   const [legalName, setLegalName] = useState('');
   const [tradingName, setTradingName] = useState('');
   const [notice, setNotice] = useState('');
+  const [trust, setTrust] = useState<TrustScore | null>(null);
   const router = useRouter();
 
   const load = useCallback(async () => {
@@ -40,6 +51,11 @@ export default function ExtranetPage() {
     } else {
       router.push('/extranet/login');
       return;
+    }
+    const trustRes = await fetch('/api/v1/supplier/trust-score');
+    if (trustRes.ok) {
+      const trustData = await trustRes.json();
+      setTrust(trustData);
     }
     setReady(true);
   }, [router]);
@@ -99,9 +115,14 @@ export default function ExtranetPage() {
                 <p className="text-xs text-[#666] font-mono">{supplier.id}</p>
               </div>
               <span className="ml-auto text-xs font-mono border border-[#d0e8d0] bg-[#e7f9ed] text-[#0a7a2a] px-2 py-1 rounded-full">
-                {supplier.status} • trust {supplier.trustScore}
+                {supplier.status} • trust {trust?.trustScore ?? supplier.trustScore}
               </span>
             </div>
+            {trust && (
+              <div className="mt-3 text-xs text-[#666]">
+                Responsiveness {trust.components.responsiveness} • Cancellation {trust.components.cancellationRate} • Inventory {trust.components.inventoryFreshness} • Compliance {trust.components.compliance}
+              </div>
+            )}
             <PropertiesManager />
             <ToursManager />
             <VenuesManager />
