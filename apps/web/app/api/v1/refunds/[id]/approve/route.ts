@@ -50,6 +50,29 @@ async function handlePost(request: Request, { params }: { params: Promise<{ id: 
   if (!refund) {
     return NextResponse.json({ error: 'Refund not found' }, { status: 404 });
   }
+  // Allow retry of a failed refund by resetting it to pending first.
+  if (refund.state === 'failed') {
+    await db
+      .update(refunds)
+      .set({ state: 'pending', approvedBy: null })
+      .where(and(eq(refunds.id, refund.id), eq(refunds.state, 'failed')));
+    await db.insert(auditEvents).values({
+      actorId: parsed.data.approvedBy,
+      actorRealm: 'admin',
+      action: 'refund.retry_requested',
+      entityType: 'refund',
+      entityId: refund.id,
+      diff: { previousState: 'failed' },
+      traceId,
+    });
+    // Re-read the refund to get the updated state.
+    const [refreshed] = await db.select().from(refunds).where(eq(refunds.id, id)).limit(1);
+    if (!refreshed || refreshed.state !== 'pending') {
+      return NextResponse.json({ error: 'Refund could not be reset for retry' }, { status: 409 });
+    }
+    // Continue with the refreshed refund.
+    Object.assign(refund, refreshed);
+  }
   if (refund.state !== 'pending') {
     return NextResponse.json({ error: `Refund already ${refund.state}` }, { status: 409 });
   }

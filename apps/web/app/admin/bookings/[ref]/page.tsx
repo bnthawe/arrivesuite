@@ -317,6 +317,36 @@ export default function AdminBookingDetailPage() {
     }
   }
 
+  async function retryRefund(refundId: string) {
+    setBusy(true);
+    setNotice('');
+    try {
+      const me = await fetch('/api/v1/auth/me');
+      const meBody = (await me.json()) as { account?: { id?: string } };
+      if (!me.ok || !meBody.account?.id) {
+        setNotice('Could not identify the signed-in admin.');
+        return;
+      }
+      const res = await fetch(`/api/v1/refunds/${encodeURIComponent(refundId)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvedBy: meBody.account.id }),
+      });
+      const body = (await res.json()) as {
+        error?: string;
+        refund?: { state?: string };
+      };
+      if (!res.ok) {
+        setNotice(body.error ?? 'Refund retry failed.');
+      } else {
+        setNotice(`Refund retry: ${body.refund?.state ?? 'processed'}.`);
+      }
+      if (detail) await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!detail) {
     return (
       <main className="min-h-screen grid place-items-center text-sm">
@@ -596,6 +626,15 @@ export default function AdminBookingDetailPage() {
                           disabled={busy}
                         >
                           Approve refund
+                         </button>
+                       )}
+                       {refund.state === 'failed' && (
+                         <button
+                           className={btnGhost}
+                           onClick={() => retryRefund(refund.id)}
+                           disabled={busy}
+                         >
+                           Retry refund
                         </button>
                       )}
                     </td>
