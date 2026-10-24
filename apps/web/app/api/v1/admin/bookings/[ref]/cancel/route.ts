@@ -8,6 +8,7 @@ import { withIdempotency } from '@/lib/idempotency';
 const cancelSchema = z.object({
   reasonCode: z.string().min(1).max(20).optional(),
   remarks: z.string().max(500).optional(),
+  supplierInitiated: z.boolean().optional(),
 });
 
 export async function POST(
@@ -46,6 +47,7 @@ export async function POST(
         remarks: parsed.data.remarks,
         traceId,
         actorId: gate.account.id,
+        supplierInitiated: parsed.data.supplierInitiated,
       });
       if (!result.ok) {
         return NextResponse.json(
