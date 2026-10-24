@@ -8,6 +8,16 @@ live DPO sandbox previously returned CloudFront HTTP 403 due to localhost/privat
 sandbox and fails closed in live (override via `DPO_PAY_REDIRECT_URL`). Token
 creation against public sandbox accounts succeeds; full hosted-payment acceptance
 remains pending.**
+
+Post-acceptance work completed:
+- §5.20 full cancellation engine: policy library (flexible/moderate/strict/non_refundable),
+  multi-item, hotel/mixed, owned/sourced three-way split, supplier-initiated cancellation.
+- Failed-refund retry UI + retry support in approve endpoint.
+- Provider-native idempotency keys for OnArrival order creation and cancellation.
+- Reconciliation service + admin endpoint.
+- PII redaction service + admin UI (Redact PII button).
+- Cancellation-policy unit tests (20+ test cases).
+- Reconcile button in admin booking detail.
 Baseline: slice 3 at `ed16cb9`; slice 4 at `871a53a`, with the single-sourced-item
 guard at `bca37e7`.
 
