@@ -1,7 +1,9 @@
 import { Queue } from 'bullmq';
 import { createRedisConnection } from './connection';
+import type { RetentionJobData } from './jobs/retention';
 
 export const RECONCILIATION_QUEUE = 'reconciliation';
+export const RETENTION_QUEUE = 'retention';
 
 export interface ReconcileJobData {
   /** Narrow the run to one booking; omit to sweep recent open bookings. */
@@ -47,5 +49,39 @@ export async function enqueueReconciliation(data: ReconcileJobData): Promise<str
     data,
     data.bookingId ? { deduplication: { id: `reconcile-${data.bookingId}`, ttl: 60_000 } } : undefined,
   );
+  return job.id;
+}
+
+// Retention queue
+let retentionQueue: Queue<RetentionJobData> | null = null;
+
+export function getRetentionQueue(): Queue<RetentionJobData> {
+  if (!retentionQueue) {
+    retentionQueue = new Queue<RetentionJobData>(RETENTION_QUEUE, {
+      connection: createRedisConnection(),
+      defaultJobOptions: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 10_000 },
+        removeOnComplete: 50,
+        removeOnFail: 100,
+      },
+    });
+    retentionQueue.on('error', (err) => {
+      console.error(`[retention-queue] error: ${(err as Error)?.message ?? err}`);
+    });
+  }
+  return retentionQueue;
+}
+
+export async function closeRetentionQueue(): Promise<void> {
+  if (retentionQueue) {
+    await retentionQueue.close();
+    retentionQueue = null;
+  }
+}
+
+export async function enqueueRetention(data: RetentionJobData): Promise<string | undefined> {
+  const q = getRetentionQueue();
+  const job = await q.add('retention-sweep', data);
   return job.id;
 }

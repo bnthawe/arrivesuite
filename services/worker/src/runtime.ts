@@ -6,9 +6,12 @@ import { createRedisConnection } from './connection';
 import {
   RECONCILIATION_QUEUE,
   getReconciliationQueue,
+  RETENTION_QUEUE,
+  getRetentionQueue,
   type ReconcileJobData,
 } from './queues';
 import { reconcileBookings } from './jobs/reconcile';
+import { runRetention, type RetentionJobData } from './jobs/retention';
 
 export interface WorkerRuntimeOptions {
   /** 0 picks an ephemeral port; useful for tests. */
@@ -23,6 +26,7 @@ export interface WorkerRuntime {
   port: number;
   server: Server;
   worker: Worker<ReconcileJobData>;
+  retentionWorker: Worker<RetentionJobData>;
   connection: IORedis;
   close: () => Promise<void>;
 }
@@ -54,6 +58,23 @@ export async function startWorker(options: WorkerRuntimeOptions = {}): Promise<W
     console.error(`[worker] error: ${err.message}`);
   });
 
+  // Retention worker (nightly PII redaction)
+  const retentionConnection = createRedisConnection();
+  const retentionWorker = new Worker<RetentionJobData>(RETENTION_QUEUE, runRetention, {
+    connection: retentionConnection,
+    concurrency: 1,
+  });
+
+  retentionWorker.on('completed', (job) => {
+    console.log(`[retention] job ${job.id} (${job.name}) completed`);
+  });
+  retentionWorker.on('failed', (job, err) => {
+    console.error(`[retention] job ${job?.id} (${job?.name}) failed: ${err.message}`);
+  });
+  retentionWorker.on('error', (err) => {
+    console.error(`[retention] error: ${err.message}`);
+  });
+
   let server: Server | null = null;
   let closed = false;
   const close = async (): Promise<void> => {
@@ -65,8 +86,10 @@ export async function startWorker(options: WorkerRuntimeOptions = {}): Promise<W
       });
     }
     await worker.close();
+    await retentionWorker.close();
     // Worker may already own/close the connection; make shutdown idempotent.
     await Promise.resolve(connection.quit()).catch(() => {});
+    await Promise.resolve(retentionConnection.quit()).catch(() => {});
   };
 
   try {
@@ -79,6 +102,15 @@ export async function startWorker(options: WorkerRuntimeOptions = {}): Promise<W
         {
           repeat: { every: options.sweepIntervalMs ?? 5 * 60_000 },
           jobId: 'reconcile-sweep-repeat',
+        },
+      );
+      // Nightly retention: redact PII for bookings older than 7 years.
+      await getRetentionQueue().add(
+        'retention-sweep',
+        { traceId: randomUUID(), retentionDays: 7 * 365 },
+        {
+          repeat: { every: 24 * 60 * 60_000 },
+          jobId: 'retention-sweep-repeat',
         },
       );
     }
@@ -121,7 +153,7 @@ export async function startWorker(options: WorkerRuntimeOptions = {}): Promise<W
 
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : requestedPort;
-    return { port, server, worker, connection, close };
+    return { port, server, worker, retentionWorker, connection, close };
   } catch (err) {
     await close().catch(() => {});
     throw err;
