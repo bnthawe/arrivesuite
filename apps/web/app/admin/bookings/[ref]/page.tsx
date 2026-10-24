@@ -287,6 +287,33 @@ export default function AdminBookingDetailPage() {
     }
   }
 
+  async function reconcile() {
+    if (!detail) return;
+    setBusy(true);
+    setNotice('');
+    try {
+      const res = await fetch(
+        `/api/v1/admin/bookings/${encodeURIComponent(detail.booking.ref)}/reconcile`,
+        { method: 'POST' },
+      );
+      const body = (await res.json()) as { error?: string; report?: { issues: string[]; items: Array<{ suggestedAction: string }> } };
+      if (!res.ok) {
+        setNotice(body.error ?? 'Reconciliation failed.');
+      } else {
+        const issues = body.report?.issues ?? [];
+        const actions = body.report?.items?.map((i) => i.suggestedAction).filter((a) => a !== 'none') ?? [];
+        setNotice(
+          `Reconciliation: ${issues.length} issue(s), ${actions.length} suggested action(s).${
+            issues.length > 0 ? ' ' + issues.join('; ') : ''
+          }`,
+        );
+      }
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function redactPii() {
     if (!detail) return;
     if (!window.confirm(`Redact PII for ${detail.booking.ref}? This cannot be undone.`)) return;
@@ -457,6 +484,13 @@ export default function AdminBookingDetailPage() {
              >
                Redact PII
               </button>
+             <button
+               className={btnGhost}
+               onClick={reconcile}
+               disabled={busy}
+             >
+               Reconcile
+             </button>
           </div>
         </div>
 
